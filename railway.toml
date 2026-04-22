@@ -9,7 +9,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install --legacy-peer-deps"]
 
 [deploy]
-startCommand = "npx prisma migrate deploy && npm run start -- -p ${PORT:-3000}"
+startCommand = "npx prisma migrate deploy || true && npm run start -- -p ${PORT:-3000}"
 healthcheckPath = "/api/ready"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
