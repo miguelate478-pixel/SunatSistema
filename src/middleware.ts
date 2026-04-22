@@ -53,11 +53,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Always allow auth API routes and health check
+  // Always allow auth API routes, health check, and Railway readiness probe
   if (
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/logout") ||
-    pathname === "/api/health"
+    pathname === "/api/health" ||
+    pathname === "/api/ready"
   ) {
     return addSecurityHeaders(NextResponse.next());
   }

@@ -10,7 +10,7 @@ cmds = ["npm install --legacy-peer-deps"]
 
 [deploy]
 startCommand = "npx prisma migrate deploy && npm run start -- -p ${PORT:-3000}"
-healthcheckPath = "/api/health"
-healthcheckTimeout = 30
+healthcheckPath = "/api/ready"
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
