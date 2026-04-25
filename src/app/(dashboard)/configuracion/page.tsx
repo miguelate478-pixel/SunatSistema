@@ -33,6 +33,8 @@ export default function ConfiguracionPage() {
 
   // Form state
   const [ruc, setRuc] = useState("");
+  const [razonSocial, setRazonSocial] = useState("");
+  const [lookingUpRuc, setLookingUpRuc] = useState(false);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
@@ -62,6 +64,27 @@ export default function ConfiguracionPage() {
     };
     run();
   }, [companyId]);
+
+  // Auto-lookup RUC when 11 digits entered
+  useEffect(() => {
+    if (ruc.length !== 11) { setRazonSocial(""); return; }
+    let cancelled = false;
+    const lookup = async () => {
+      setLookingUpRuc(true);
+      try {
+        const res = await fetch(`/api/sunat/ruc?ruc=${ruc}`);
+        const json = await res.json();
+        if (!cancelled && json.success) {
+          setRazonSocial(json.data.razonSocial);
+        }
+      } catch { /* silent */ } finally {
+        if (!cancelled) setLookingUpRuc(false);
+      }
+    };
+    // Debounce 500ms
+    const timer = setTimeout(lookup, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [ruc]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -231,13 +254,28 @@ export default function ConfiguracionPage() {
                   <label className="text-sm font-medium text-gray-700">RUC de la empresa</label>
                   <Input
                     value={ruc}
-                    onChange={(e) => setRuc(e.target.value)}
+                    onChange={(e) => setRuc(e.target.value.replace(/\D/g, "").slice(0, 11))}
                     placeholder="20512345678"
                     maxLength={11}
                     required
                     disabled={saving}
                   />
-                  <p className="text-xs text-gray-400">RUC de 11 dígitos registrado en SUNAT</p>
+                  {lookingUpRuc && (
+                    <p className="text-xs text-blue-600 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Buscando razón social...
+                    </p>
+                  )}
+                  {razonSocial && !lookingUpRuc && (
+                    <p className="text-xs text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> {razonSocial}
+                    </p>
+                  )}
+                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (
+                    <p className="text-xs text-amber-600">No se encontró la razón social — verifica el RUC</p>
+                  )}
+                  {ruc.length < 11 && (
+                    <p className="text-xs text-gray-400">RUC de 11 dígitos registrado en SUNAT</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
