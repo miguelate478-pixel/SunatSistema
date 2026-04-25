@@ -14,7 +14,8 @@ const saveSchema = z.object({
   companyId: z.string().uuid(),
   ruc: z.string().length(11, "RUC debe tener 11 dígitos"),
   clientId: z.string().min(1, "client_id requerido"),
-  clientSecret: z.string().min(1, "client_secret requerido"),
+  // clientSecret is optional when updating — empty string means "keep existing"
+  clientSecret: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -53,8 +54,38 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = saveSchema.parse(body);
 
-    // Encrypt the secret before storing
-    const clientSecretEnc = encrypt(data.clientSecret);
+    // Check if credentials already exist
+    const existing = await prisma.sunatCredential.findUnique({ where: { companyId: data.companyId } });
+
+    // clientSecret is required only on first save
+    if (!existing && (!data.clientSecret || data.clientSecret.trim() === "")) {
+      return NextResponse.json(
+        { success: false, error: "client_secret es requerido para la primera configuración" },
+        { status: 400 }
+      );
+    }
+
+    // Build update data — only update secret if provided
+    const updateData: {
+      ruc: string;
+      clientId: string;
+      isActive: boolean;
+      lastTestedAt: null;
+      lastTestOk: null;
+      lastTestMessage: null;
+      clientSecretEnc?: string;
+    } = {
+      ruc: data.ruc,
+      clientId: data.clientId,
+      isActive: true,
+      lastTestedAt: null,
+      lastTestOk: null,
+      lastTestMessage: null,
+    };
+
+    if (data.clientSecret && data.clientSecret.trim() !== "") {
+      updateData.clientSecretEnc = encrypt(data.clientSecret);
+    }
 
     const cred = await prisma.sunatCredential.upsert({
       where: { companyId: data.companyId },
@@ -62,19 +93,10 @@ export async function POST(request: NextRequest) {
         companyId: data.companyId,
         ruc: data.ruc,
         clientId: data.clientId,
-        clientSecretEnc,
+        clientSecretEnc: encrypt(data.clientSecret!),
         isActive: true,
       },
-      update: {
-        ruc: data.ruc,
-        clientId: data.clientId,
-        clientSecretEnc,
-        isActive: true,
-        // Reset test status on credential change
-        lastTestedAt: null,
-        lastTestOk: null,
-        lastTestMessage: null,
-      },
+      update: updateData,
     });
 
     return NextResponse.json({
