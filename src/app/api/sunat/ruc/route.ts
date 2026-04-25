@@ -1,55 +1,80 @@
 /**
  * GET /api/sunat/ruc?ruc=20512345678
- * Consulta la razón social directamente desde el portal público de SUNAT.
- * No requiere credenciales ni APIs de pago.
+ * Consulta la razón social de un RUC.
+ * Usa la API pública de SUNAT Padrones (no requiere captcha ni token).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/session";
 
-async function lookupFromSunat(ruc: string): Promise<{ razonSocial: string; estado?: string } | null> {
-  try {
-    const url = `https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/jcrS00Alias?accion=consPorRuc&nroRuc=${ruc}&contexto=ti-it&modo=1`;
-    const res = await fetch(url, {
-      headers: {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "es-PE,es;q=0.9",
-        "Referer": "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp",
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) return null;
-    const html = await res.text();
-
-    // Extract razon social — SUNAT HTML has it in a table cell after "Nombre Comercial" or "Apellidos y Nombres"
-    // Pattern: look for the value in the response table
-    const patterns = [
-      /Nombre Comercial[^<]*<\/td>\s*<td[^>]*>([^<]+)<\/td>/i,
-      /Apellidos y Nombres[^<]*<\/td>\s*<td[^>]*>([^<]+)<\/td>/i,
-      /Nombre o Raz[oó]n Social[^<]*<\/td>\s*<td[^>]*>([^<]+)<\/td>/i,
-      /<b>([A-ZÁÉÍÓÚÑ\s\.&,'-]{5,80})<\/b>/,
-      /class="[^"]*tdReg[^"]*"[^>]*>([A-ZÁÉÍÓÚÑ\s\.&,'-]{5,80})</i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match?.[1]) {
-        const razonSocial = match[1].trim().replace(/&amp;/g, "&").replace(/&nbsp;/g, " ");
-        if (razonSocial.length >= 3 && !/^\d+$/.test(razonSocial)) {
-          // Extract estado if available
-          const estadoMatch = html.match(/Estado[^<]*<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-          const estado = estadoMatch?.[1]?.trim();
-          return { razonSocial, estado };
+async function lookupRuc(ruc: string): Promise<{ razonSocial: string; estado?: string } | null> {
+  // SUNAT API Padrones — public endpoint, no auth required
+  const endpoints = [
+    // Option 1: SUNAT API Padrones
+    async () => {
+      const res = await fetch(
+        `https://api.sunat.gob.pe/v1/contribuyente/contribuyentes/${ruc}/validarcontribuyente`,
+        {
+          headers: {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0",
+          },
+          signal: AbortSignal.timeout(8000),
         }
-      }
-    }
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as {
+        razonSocial?: string;
+        nombre?: string;
+        estadoContribuyente?: string;
+        condicionContribuyente?: string;
+      };
+      const razonSocial = data.razonSocial ?? data.nombre ?? null;
+      if (!razonSocial) return null;
+      return { razonSocial, estado: data.estadoContribuyente };
+    },
+    // Option 2: SUNAT CPE API (requires no auth for basic lookup)
+    async () => {
+      const res = await fetch(
+        `https://api-cpe.sunat.gob.pe/v1/contribuyente/contribuyentes/${ruc}`,
+        {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as { razonSocial?: string; nombre?: string };
+      const razonSocial = data.razonSocial ?? data.nombre ?? null;
+      if (!razonSocial) return null;
+      return { razonSocial };
+    },
+    // Option 3: DNI/RUC public lookup
+    async () => {
+      const res = await fetch(
+        `https://dniruc.apisperu.com/api/v1/ruc/${ruc}`,
+        {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as { razonSocial?: string; nombre?: string };
+      const razonSocial = data.razonSocial ?? data.nombre ?? null;
+      if (!razonSocial) return null;
+      return { razonSocial };
+    },
+  ];
 
-    return null;
-  } catch {
-    return null;
+  for (const endpoint of endpoints) {
+    try {
+      const result = await endpoint();
+      if (result?.razonSocial) return result;
+    } catch {
+      continue;
+    }
   }
+
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -61,12 +86,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "RUC debe tener 11 dígitos numéricos" }, { status: 400 });
     }
 
-    const result = await lookupFromSunat(ruc);
+    const result = await lookupRuc(ruc);
 
     if (!result) {
       return NextResponse.json({
         success: false,
-        error: "No se encontró información para este RUC en SUNAT.",
+        error: "No se encontró información para este RUC. Verifica que sea correcto o ingrésalo manualmente.",
       }, { status: 404 });
     }
 

@@ -57,13 +57,18 @@ export default function ConfiguracionPage() {
           setCred(json.data);
           setRuc(json.data.ruc);
           setClientId(json.data.clientId);
+        } else {
+          // No credentials yet — pre-fill RUC from active company
+          setCred(null);
+          setRuc(activeCompany?.ruc ?? "");
+          setClientId("");
         }
       } catch { /* silent */ } finally {
         setLoadingCred(false);
       }
     };
     run();
-  }, [companyId]);
+  }, [companyId, activeCompany?.ruc]);
 
   // Auto-lookup RUC when 11 digits entered
   useEffect(() => {
@@ -263,29 +268,38 @@ export default function ConfiguracionPage() {
                   <Input
                     value={ruc}
                     onChange={(e) => setRuc(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="20512345678"
+                    placeholder={activeCompany?.ruc ?? "20512345678"}
                     maxLength={11}
                     required
                     disabled={saving}
+                    className={ruc.length === 11 && activeCompany?.ruc && ruc !== activeCompany.ruc ? "border-red-400" : ""}
                   />
+                  {/* RUC mismatch warning */}
+                  {ruc.length === 11 && activeCompany?.ruc && ruc !== activeCompany.ruc && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      El RUC ingresado no coincide con la empresa activa ({activeCompany.ruc})
+                    </p>
+                  )}
                   {lookingUpRuc && (
                     <p className="text-xs text-blue-600 flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" /> Buscando razón social...
                     </p>
                   )}
-                  {razonSocial && !lookingUpRuc && (
+                  {razonSocial && !lookingUpRuc && ruc.length === 11 && (
                     <p className="text-xs text-emerald-700 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" /> {razonSocial}
                     </p>
                   )}
-                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (
-                    <p className="text-xs text-amber-600">No se encontró la razón social — verifica el RUC</p>
+                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (!activeCompany?.ruc || ruc === activeCompany.ruc) && (
+                    <p className="text-xs text-amber-600">No se encontró la razón social en SUNAT — el RUC puede ser correcto igual</p>
                   )}
                   {ruc.length < 11 && (
-                    <p className="text-xs text-gray-400">RUC de 11 dígitos registrado en SUNAT</p>
+                    <p className="text-xs text-gray-400">
+                      RUC de 11 dígitos — empresa activa: <span className="font-mono">{activeCompany?.ruc ?? "—"}</span>
+                    </p>
                   )}
                 </div>
-
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">Client ID</label>
                   <Input

@@ -57,6 +57,21 @@ export async function POST(request: NextRequest) {
     // Check if credentials already exist
     const existing = await prisma.sunatCredential.findUnique({ where: { companyId: data.companyId } });
 
+    // Validate RUC matches the company's registered RUC
+    const company = await prisma.company.findUnique({
+      where: { id: data.companyId },
+      select: { ruc: true, razonSocial: true },
+    });
+    if (!company) {
+      return NextResponse.json({ success: false, error: "Empresa no encontrada" }, { status: 404 });
+    }
+    if (company.ruc !== data.ruc) {
+      return NextResponse.json({
+        success: false,
+        error: `El RUC ingresado (${data.ruc}) no coincide con el RUC de la empresa activa (${company.ruc}). Verifica el RUC.`,
+      }, { status: 400 });
+    }
+
     // clientSecret is required only on first save
     if (!existing && (!data.clientSecret || data.clientSecret.trim() === "")) {
       return NextResponse.json(
@@ -66,25 +81,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Build update data — only update secret if provided
+    // Do NOT reset lastTestedAt/lastTestOk when only updating RUC/clientId
+    // Only reset test status if credentials actually changed
+    const secretChanged = !!(data.clientSecret && data.clientSecret.trim() !== "");
     const updateData: {
       ruc: string;
       clientId: string;
       isActive: boolean;
-      lastTestedAt: null;
-      lastTestOk: null;
-      lastTestMessage: null;
+      lastTestedAt?: null;
+      lastTestOk?: null;
+      lastTestMessage?: null;
       clientSecretEnc?: string;
     } = {
       ruc: data.ruc,
       clientId: data.clientId,
       isActive: true,
-      lastTestedAt: null,
-      lastTestOk: null,
-      lastTestMessage: null,
     };
 
-    if (data.clientSecret && data.clientSecret.trim() !== "") {
-      updateData.clientSecretEnc = encrypt(data.clientSecret);
+    if (secretChanged) {
+      updateData.clientSecretEnc = encrypt(data.clientSecret!);
+      // Only reset test status when secret changes
+      updateData.lastTestedAt = null;
+      updateData.lastTestOk = null;
+      updateData.lastTestMessage = null;
     }
 
     const cred = await prisma.sunatCredential.upsert({
