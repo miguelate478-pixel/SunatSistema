@@ -18,5 +18,6 @@ echo "Step 3: Seeding if needed..."
 npx tsx prisma/seed.deploy.ts
 
 # Step 4: Start server
-echo "Step 4: Starting server on port ${PORT:-3000}..."
-exec npm run start -- -p ${PORT:-3000}
+export PORT=${PORT:-3000}
+echo "Step 4: Starting server on port ${PORT}..."
+exec npm run start
