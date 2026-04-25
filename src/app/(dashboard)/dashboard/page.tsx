@@ -409,7 +409,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {[
-                    { serie: "F001", numero: "000123", tipo: "FACTURA", razonSocialEmisor: "CORPORACIÓN ANDINA S.A.C.", rucEmisor: "20512345678", fechaEmision: "2024-04-15", total: 12500, moneda: "PEN", tieneXML: true, tienePDF: true, tieneCDR: true, estado: "ACEPTADO" },
+                    { serie: "F001", numero: "000123", tipo: "FACTURA", razonSocialEmisor: "CORPORACIÓN ANDINA S.A.C.", rucEmisor: "20610169849", fechaEmision: "2024-04-15", total: 12500, moneda: "PEN", tieneXML: true, tienePDF: true, tieneCDR: true, estado: "ACEPTADO" },
                     { serie: "B001", numero: "004567", tipo: "BOLETA", razonSocialEmisor: "TECNOLOGÍA AVANZADA E.I.R.L.", rucEmisor: "10456789012", fechaEmision: "2024-04-14", total: 8500, moneda: "PEN", tieneXML: true, tienePDF: false, tieneCDR: true, estado: "OBSERVADO" },
                     { serie: "F001", numero: "000124", tipo: "FACTURA", razonSocialEmisor: "INSUMOS INDUSTRIALES S.A.", rucEmisor: "20123456789", fechaEmision: "2024-04-13", total: 18500, moneda: "USD", tieneXML: true, tienePDF: true, tieneCDR: false, estado: "PENDIENTE" },
                   ].map((comp, i) => (

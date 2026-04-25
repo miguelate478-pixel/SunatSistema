@@ -201,7 +201,7 @@ Después del seed, puedes usar:
 - AUDITOR
 
 ### Empresa
-- **RUC**: 20512345678
+- **RUC**: 20610169849
 - **Razón Social**: CORPORACIÓN ANDINA S.A.C.
 - **Plan**: PROFESSIONAL
 

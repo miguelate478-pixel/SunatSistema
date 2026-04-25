@@ -268,19 +268,11 @@ export default function ConfiguracionPage() {
                   <Input
                     value={ruc}
                     onChange={(e) => setRuc(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder={activeCompany?.ruc ?? "20512345678"}
+                    placeholder="RUC de 11 dígitos"
                     maxLength={11}
                     required
                     disabled={saving}
-                    className={ruc.length === 11 && activeCompany?.ruc && ruc !== activeCompany.ruc ? "border-red-400" : ""}
                   />
-                  {/* RUC mismatch warning */}
-                  {ruc.length === 11 && activeCompany?.ruc && ruc !== activeCompany.ruc && (
-                    <p className="text-xs text-red-600 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      El RUC ingresado no coincide con la empresa activa ({activeCompany.ruc})
-                    </p>
-                  )}
                   {lookingUpRuc && (
                     <p className="text-xs text-blue-600 flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" /> Buscando razón social...
@@ -291,13 +283,8 @@ export default function ConfiguracionPage() {
                       <CheckCircle2 className="w-3 h-3" /> {razonSocial}
                     </p>
                   )}
-                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (!activeCompany?.ruc || ruc === activeCompany.ruc) && (
-                    <p className="text-xs text-amber-600">No se encontró la razón social en SUNAT — el RUC puede ser correcto igual</p>
-                  )}
                   {ruc.length < 11 && (
-                    <p className="text-xs text-gray-400">
-                      RUC de 11 dígitos — empresa activa: <span className="font-mono">{activeCompany?.ruc ?? "—"}</span>
-                    </p>
+                    <p className="text-xs text-gray-400">RUC de 11 dígitos registrado en SUNAT</p>
                   )}
                 </div>
                 <div className="space-y-1.5">

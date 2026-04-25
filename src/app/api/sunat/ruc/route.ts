@@ -1,5 +1,5 @@
 /**
- * GET /api/sunat/ruc?ruc=20512345678
+ * GET /api/sunat/ruc?ruc=20610169849
  * Consulta la razón social de un RUC.
  * Usa la API pública de SUNAT Padrones (no requiere captcha ni token).
  */

@@ -38,7 +38,7 @@ async function main() {
 
   const company = await prisma.company.create({
     data: {
-      ruc: "20512345678",
+      ruc: "20610169849",
       razonSocial: "CORPORACIÓN ANDINA S.A.C.",
       nombreComercial: "CorpAndina",
       direccion: "Av. Javier Prado Este 123, San Isidro, Lima",

@@ -185,7 +185,7 @@ Abre http://localhost:3000
 - AUDITOR
 
 ### Empresa (1)
-- **RUC**: 20512345678
+- **RUC**: 20610169849
 - **Razón Social**: CORPORACIÓN ANDINA S.A.C.
 - **Plan**: PROFESSIONAL
 

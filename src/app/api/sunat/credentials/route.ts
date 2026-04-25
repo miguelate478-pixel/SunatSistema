@@ -57,19 +57,14 @@ export async function POST(request: NextRequest) {
     // Check if credentials already exist
     const existing = await prisma.sunatCredential.findUnique({ where: { companyId: data.companyId } });
 
-    // Validate RUC matches the company's registered RUC
+    // Verify company exists — RUC in credentials is independent of company.ruc
+    // (the SUNAT OAuth credentials can belong to any valid RUC)
     const company = await prisma.company.findUnique({
       where: { id: data.companyId },
       select: { ruc: true, razonSocial: true },
     });
     if (!company) {
       return NextResponse.json({ success: false, error: "Empresa no encontrada" }, { status: 404 });
-    }
-    if (company.ruc !== data.ruc) {
-      return NextResponse.json({
-        success: false,
-        error: `El RUC ingresado (${data.ruc}) no coincide con el RUC de la empresa activa (${company.ruc}). Verifica el RUC.`,
-      }, { status: 400 });
     }
 
     // clientSecret is required only on first save
