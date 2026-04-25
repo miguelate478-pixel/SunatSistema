@@ -9,7 +9,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install --legacy-peer-deps"]
 
 [deploy]
-startCommand = "sh scripts/start.sh"
+startCommand = "npx prisma migrate resolve --rolled-back 20240421000000_initial_schema 2>/dev/null; npx prisma migrate resolve --rolled-back 20240422000000_add_sunat_credentials 2>/dev/null; npx prisma migrate resolve --rolled-back 20260421000000_add_sync_executions 2>/dev/null; npx prisma migrate deploy && npx tsx prisma/seed.deploy.ts && export PORT=${PORT:-3000} && npm run start"
 healthcheckPath = "/api/ready"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
