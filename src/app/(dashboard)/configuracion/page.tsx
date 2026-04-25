@@ -67,7 +67,7 @@ export default function ConfiguracionPage() {
 
   // Auto-lookup RUC when 11 digits entered
   useEffect(() => {
-    if (ruc.length !== 11) { setRazonSocial(""); return; }
+    if (ruc.length !== 11) return;
     let cancelled = false;
     const lookup = async () => {
       setLookingUpRuc(true);
@@ -76,14 +76,22 @@ export default function ConfiguracionPage() {
         const json = await res.json();
         if (!cancelled && json.success) {
           setRazonSocial(json.data.razonSocial);
+        } else if (!cancelled) {
+          setRazonSocial("");
         }
-      } catch { /* silent */ } finally {
+      } catch {
+        if (!cancelled) setRazonSocial("");
+      } finally {
         if (!cancelled) setLookingUpRuc(false);
       }
     };
-    // Debounce 500ms
     const timer = setTimeout(lookup, 500);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setRazonSocial("");
+      setLookingUpRuc(false);
+    };
   }, [ruc]);
 
   async function handleSave(e: React.FormEvent) {
