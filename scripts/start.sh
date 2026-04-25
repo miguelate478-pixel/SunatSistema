@@ -1,4 +1,5 @@
 #!/bin/sh
+# ControlSUNAT startup script v3
 set -e
 
 echo "=== ControlSUNAT Startup ==="
@@ -17,7 +18,8 @@ npx prisma migrate deploy
 echo "Step 3: Seeding if needed..."
 npx tsx prisma/seed.deploy.ts
 
-# Step 4: Start server — use PORT env var directly (Next.js reads PORT automatically)
-echo "Step 4: Starting server on port ${PORT:-3000}..."
+# Step 4: Set PORT and start server
+# Next.js reads PORT env var natively - do NOT use -p flag
 export PORT=${PORT:-3000}
+echo "Step 4: Starting server on port ${PORT}..."
 exec npm run start

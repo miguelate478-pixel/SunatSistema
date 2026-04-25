@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --legacy-peer-deps && npx prisma generate && npm run build"
+buildCommand = "npm install --legacy-peer-deps && npx prisma generate && npm run build && chmod +x scripts/start.sh"
 
 [build.nixpacksPlan.phases.setup]
 nixPkgs = ["nodejs_20"]
@@ -9,7 +9,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install --legacy-peer-deps"]
 
 [deploy]
-startCommand = "npx prisma migrate resolve --rolled-back 20240421000000_initial_schema 2>/dev/null; npx prisma migrate resolve --rolled-back 20240422000000_add_sunat_credentials 2>/dev/null; npx prisma migrate resolve --rolled-back 20260421000000_add_sync_executions 2>/dev/null; npx prisma migrate deploy && npx tsx prisma/seed.deploy.ts && export PORT=${PORT:-3000} && npm run start"
+startCommand = "sh scripts/start.sh"
 healthcheckPath = "/api/ready"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
