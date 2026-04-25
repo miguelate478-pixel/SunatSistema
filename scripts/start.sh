@@ -1,8 +1,9 @@
 #!/bin/sh
-# ControlSUNAT startup script v3
+# ControlSUNAT startup script v4
 set -e
 
 echo "=== ControlSUNAT Startup ==="
+echo "PORT is: ${PORT}"
 
 # Step 1: Resolve any failed migrations
 echo "Step 1: Resolving failed migrations..."
@@ -18,8 +19,8 @@ npx prisma migrate deploy
 echo "Step 3: Seeding if needed..."
 npx tsx prisma/seed.deploy.ts
 
-# Step 4: Set PORT and start server
-# Next.js reads PORT env var natively - do NOT use -p flag
-export PORT=${PORT:-3000}
+# Step 4: Start server
+# Railway sets PORT automatically - Next.js reads it natively
+# Do NOT override PORT - let Railway control it
 echo "Step 4: Starting server on port ${PORT}..."
 exec npm run start
