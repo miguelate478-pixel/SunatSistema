@@ -121,7 +121,7 @@ export default function VentasPage() {
             <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Error al cargar datos</h3>
             <p className="text-gray-600 mb-4">{error}</p>
-            <Button onClick={refetch}>Reintentar</Button>
+            <Button onClick={() => refetch()}>Reintentar</Button>
           </div>
         </div>
       </div>
@@ -206,7 +206,7 @@ export default function VentasPage() {
                 <Input type="date" className="w-36 text-xs" onChange={(e) => updateFilters({ fechaFin: e.target.value || undefined })} />
               </div>
               <div className="flex gap-2 ml-auto">
-                <Button variant="outline" size="sm" className="gap-2" onClick={refetch}>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
                   <RefreshCw className="w-3.5 h-3.5" />
                   Actualizar
                 </Button>
