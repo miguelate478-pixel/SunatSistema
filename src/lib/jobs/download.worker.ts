@@ -2,8 +2,12 @@
  * SUNAT Download Worker
  * PENDING → PROCESSING → COMPLETED | FAILED
  *
- * Uses per-company SUNAT credentials from DB.
- * Falls back to mock provider when SUNAT_PROVIDER != "real".
+ * Descarga XML/PDF/CDR de comprobantes registrados en DB.
+ * Soporta:
+ *   - Descarga por rango de fechas
+ *   - Descarga por lista de voucherIds específicos
+ *   - skipXML: omite XML si ya fue importado manualmente
+ *   - Trazabilidad completa por job
  */
 
 import prisma from "@/lib/db/prisma";
@@ -17,6 +21,8 @@ interface DownloadParams {
   numero?: string;
   fechaInicio?: string;
   fechaFin?: string;
+  voucherIds?: string[];  // descarga específica por IDs
+  skipXML?: boolean;      // omitir XML (ya importado)
 }
 
 async function processDownload(
@@ -27,31 +33,71 @@ async function processDownload(
 ): Promise<{ docsOk: number; docsError: number }> {
   const provider = await getSunatProviderForCompany(companyId);
 
-  const voucherWhere = {
+  // Build voucher query
+  let voucherWhere: Parameters<typeof prisma.voucher.findMany>[0]["where"] = {
     companyId,
-    deletedAt: null as null,
-    ...(params.serie ? { serie: params.serie } : {}),
-    ...(params.numero ? { numero: params.numero } : {}),
-    ...(params.fechaInicio && params.fechaFin ? {
-      fechaEmision: { gte: new Date(params.fechaInicio), lte: new Date(params.fechaFin) },
-    } : {}),
+    deletedAt: null,
   };
+
+  if (params.voucherIds && params.voucherIds.length > 0) {
+    // Specific vouchers (e.g. after XML import)
+    voucherWhere = { ...voucherWhere, id: { in: params.voucherIds } };
+  } else {
+    // Date range
+    if (params.serie) voucherWhere = { ...voucherWhere, serie: params.serie };
+    if (params.numero) voucherWhere = { ...voucherWhere, numero: params.numero };
+    if (params.fechaInicio && params.fechaFin) {
+      voucherWhere = {
+        ...voucherWhere,
+        fechaEmision: { gte: new Date(params.fechaInicio), lte: new Date(params.fechaFin) },
+      };
+    }
+  }
 
   const vouchers = await prisma.voucher.findMany({
     where: voucherWhere,
-    select: { id: true, serie: true, numero: true, tipo: true, rucEmisor: true, fechaEmision: true, companyId: true },
+    select: {
+      id: true, serie: true, numero: true, tipo: true,
+      rucEmisor: true, fechaEmision: true, companyId: true,
+      tieneXML: true, tienePDF: true, tieneCDR: true,
+    },
   });
 
   logger.info("[DownloadWorker] Processing vouchers", { jobId, companyId, tipo, count: vouchers.length });
 
+  // Update total count
+  await prisma.downloadJob.update({
+    where: { id: jobId },
+    data: { totalDocs: vouchers.length },
+  });
+
   let docsOk = 0;
   let docsError = 0;
 
-  const tiposToDownload: Array<"XML" | "PDF" | "CDR"> =
+  // Determine which file types to download
+  let tiposToDownload: Array<"XML" | "PDF" | "CDR"> =
     tipo === "MASIVO" ? ["XML", "PDF", "CDR"] : [tipo as "XML" | "PDF" | "CDR"];
 
+  // Remove XML if skipXML is set (already imported manually)
+  if (params.skipXML) {
+    tiposToDownload = tiposToDownload.filter((t) => t !== "XML");
+  }
+
   for (const voucher of vouchers) {
-    for (const tipoArchivo of tiposToDownload) {
+    // Skip already-downloaded file types
+    const tiposNeeded = tiposToDownload.filter((t) => {
+      if (t === "XML" && voucher.tieneXML) return false;
+      if (t === "PDF" && voucher.tienePDF) return false;
+      if (t === "CDR" && voucher.tieneCDR) return false;
+      return true;
+    });
+
+    if (tiposNeeded.length === 0) {
+      docsOk++;
+      continue;
+    }
+
+    for (const tipoArchivo of tiposNeeded) {
       try {
         const result = await provider.downloadDocument(
           {
@@ -74,13 +120,13 @@ async function processDownload(
         });
 
         // Update voucher flags
-        const flagUpdate: { tieneXML?: boolean; tienePDF?: boolean; tieneCDR?: boolean } = {};
+        const flagUpdate: Record<string, boolean> = {};
         if (tipoArchivo === "XML") flagUpdate.tieneXML = true;
         if (tipoArchivo === "PDF") flagUpdate.tienePDF = true;
         if (tipoArchivo === "CDR") flagUpdate.tieneCDR = true;
         await prisma.voucher.update({ where: { id: voucher.id }, data: flagUpdate });
 
-        // Upsert VoucherDocument record
+        // Upsert VoucherDocument
         await prisma.voucherDocument.upsert({
           where: { id: `${voucher.id}-${tipoArchivo}` },
           create: {
@@ -106,7 +152,6 @@ async function processDownload(
           tipoArchivo,
           error: err instanceof Error ? err.message : String(err),
         });
-        // Store error in job metadata (non-blocking)
         prisma.downloadJob.update({
           where: { id: jobId },
           data: { metadata: { lastError: userMsg, lastErrorVoucher: `${voucher.serie}-${voucher.numero}` } },
@@ -114,14 +159,14 @@ async function processDownload(
       }
     }
 
-    // Update progress after each voucher
-    const total = vouchers.length * tiposToDownload.length;
+    // Update progress
+    const total = Math.max(vouchers.length, 1);
     const done = docsOk + docsError;
     const progress = Math.min(Math.round((done / total) * 90) + 10, 95);
     await prisma.downloadJob.update({ where: { id: jobId }, data: { progreso: progress, docsOk } });
   }
 
-  // Update lastSyncAt on credentials
+  // Update lastSyncAt
   await prisma.sunatCredential.updateMany({
     where: { companyId },
     data: { lastSyncAt: new Date() },
@@ -129,8 +174,6 @@ async function processDownload(
 
   return { docsOk, docsError };
 }
-
-// ── Worker handler ─────────────────────────────────────────────────────────────
 
 async function handleDownloadJob(payload: JobPayload): Promise<void> {
   const { jobId, companyId, tipo, parametros } = payload;
