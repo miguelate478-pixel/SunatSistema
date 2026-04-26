@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const msg = error instanceof Error ? error.message : "Error al probar conexión";
     logger.error("[SUNAT] Connection test failed", { error: msg });
     return NextResponse.json(
-      { success: false, error: "No se pudo probar la conexión SUNAT. Verifica las credenciales." },
+      { success: false, error: msg },
       { status: msg === "No autenticado" ? 401 : 400 }
     );
   }

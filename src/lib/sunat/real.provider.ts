@@ -223,9 +223,13 @@ export class RealSunatProvider implements ISunatProvider {
       await this.getToken();
       return { ok: true, message: "Conexión SUNAT exitosa" };
     } catch (err) {
-      if (err instanceof SunatAuthError) return { ok: false, message: "Credenciales inválidas" };
-      if (err instanceof SunatTokenError) return { ok: false, message: "Error al obtener token SUNAT" };
-      return { ok: false, message: "No se pudo conectar a SUNAT" };
+      if (err instanceof SunatAuthError) {
+        return { ok: false, message: `Credenciales inválidas (${err.message})` };
+      }
+      if (err instanceof SunatTokenError) {
+        return { ok: false, message: `Error de token: ${err.message}` };
+      }
+      return { ok: false, message: `Error: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 }
