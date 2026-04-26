@@ -77,7 +77,7 @@ export default function ConfiguracionPage() {
     const lookup = async () => {
       setLookingUpRuc(true);
       try {
-        const res = await fetch(`/api/sunat/ruc?ruc=${ruc}`);
+        const res = await fetch(`/api/sunat/ruc?ruc=${ruc}&companyId=${companyId ?? ""}`);
         const json = await res.json();
         if (!cancelled && json.success) {
           setRazonSocial(json.data.razonSocial);
@@ -283,8 +283,8 @@ export default function ConfiguracionPage() {
                       <CheckCircle2 className="w-3 h-3" /> {razonSocial}
                     </p>
                   )}
-                  {ruc.length < 11 && (
-                    <p className="text-xs text-gray-400">RUC de 11 dígitos registrado en SUNAT</p>
+                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (
+                    <p className="text-xs text-amber-600">No se encontró la razón social automáticamente — puedes continuar igual, no afecta la conexión</p>
                   )}
                 </div>
                 <div className="space-y-1.5">

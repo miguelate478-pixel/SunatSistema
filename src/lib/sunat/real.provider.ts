@@ -199,6 +199,23 @@ export class RealSunatProvider implements ISunatProvider {
     };
   }
 
+  // ── Lookup contribuyente ─────────────────────────────────────────────────────
+
+  async lookupContribuyente(ruc: string): Promise<string | null> {
+    try {
+      const token = await this.getToken();
+      const res = await fetch(
+        `${CPE_BASE}/contribuyentes/${ruc}`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(8000) }
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as { razonSocial?: string; nombre?: string };
+      return data.razonSocial ?? data.nombre ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   // ── Health check ──────────────────────────────────────────────────────────────
 
   async healthCheck(): Promise<{ ok: boolean; message: string }> {
