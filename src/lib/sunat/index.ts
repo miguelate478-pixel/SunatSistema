@@ -30,12 +30,22 @@ export async function getSunatProviderForCompany(companyId: string): Promise<ISu
     const cred = await prisma.sunatCredential.findUnique({ where: { companyId } });
 
     if (cred && cred.isActive) {
-      const clientSecret = decrypt(cred.clientSecretEnc);
+      let clientSecret: string;
+      try {
+        clientSecret = decrypt(cred.clientSecretEnc);
+      } catch (decryptErr) {
+        logger.warn("[SUNAT] Failed to decrypt client secret — credentials may have been saved with a different key. Re-save credentials in /configuracion.", { companyId, error: String(decryptErr) });
+        throw new Error("No se puede descifrar el client_secret. Vuelve a guardar las credenciales en /configuracion con el client_secret real.");
+      }
+      if (!clientSecret || clientSecret.trim() === "") {
+        throw new Error("El client_secret descifrado está vacío. Vuelve a guardar las credenciales en /configuracion.");
+      }
       logger.info("[SUNAT] Using DB credentials for company", { companyId, ruc: cred.ruc });
       return new RealSunatProvider({ clientId: cred.clientId, clientSecret, ruc: cred.ruc });
     }
   } catch (err) {
-    logger.warn("[SUNAT] Could not load DB credentials, falling back to env", { companyId, error: String(err) });
+    logger.warn("[SUNAT] Could not load DB credentials", { companyId, error: String(err) });
+    throw err; // Re-throw so the caller gets the real error message
   }
 
   // Fallback to env vars
