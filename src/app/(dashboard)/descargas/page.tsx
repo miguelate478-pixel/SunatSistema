@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
 import {
   Download, RefreshCw, CheckCircle2, XCircle, Clock,
   Loader2, FileCode, FileText, FileDown, Package,
-  AlertTriangle, Settings, Search,
+  AlertTriangle, Settings, Info,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -35,16 +36,10 @@ interface SunatCredStatus {
   ruc: string;
 }
 
-interface SyncResult {
-  docsNuevos: number;
-  estado: string;
-  errorMsg?: string;
-}
-
 const TIPO_CONFIG = {
-  XML:    { icon: FileCode,  label: "Archivos XML",              color: "text-emerald-600 bg-emerald-50" },
-  PDF:    { icon: FileText,  label: "Archivos PDF",              color: "text-blue-600 bg-blue-50" },
-  CDR:    { icon: FileDown,  label: "Archivos CDR",              color: "text-violet-600 bg-violet-50" },
+  XML:    { icon: FileCode,  label: "Archivos XML",                  color: "text-emerald-600 bg-emerald-50" },
+  PDF:    { icon: FileText,  label: "Archivos PDF",                  color: "text-blue-600 bg-blue-50" },
+  CDR:    { icon: FileDown,  label: "Archivos CDR",                  color: "text-violet-600 bg-violet-50" },
   MASIVO: { icon: Package,   label: "Descarga Masiva (XML+PDF+CDR)", color: "text-amber-600 bg-amber-50" },
 };
 
@@ -67,10 +62,11 @@ export default function DescargasPage() {
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [credStatus, setCredStatus] = useState<SunatCredStatus | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
   const months = getMonths(6);
 
   const loadJobs = useCallback(async () => {
@@ -98,7 +94,6 @@ export default function DescargasPage() {
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
-  // Poll active jobs every 2s
   useEffect(() => {
     const hasActive = jobs.some((j) => j.estado === "PENDING" || j.estado === "PROCESSING");
     if (!hasActive) return;
@@ -106,43 +101,18 @@ export default function DescargasPage() {
     return () => clearInterval(interval);
   }, [jobs, loadJobs]);
 
-  // Step 1: Sync — discover new vouchers from SUNAT
-  async function handleSync() {
-    if (!companyId || syncing) return;
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      const period = months[selectedPeriod];
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId,
-          fechaInicio: period.start,
-          fechaFin: period.end,
-          downloadFiles: false, // only discover, user will trigger download manually
-        }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setSyncResult(json.data);
-        await loadJobs();
-      } else {
-        setSyncResult({ docsNuevos: 0, estado: "FAILED", errorMsg: json.error });
-      }
-    } catch {
-      setSyncResult({ docsNuevos: 0, estado: "FAILED", errorMsg: "Error de conexión" });
-    } finally {
-      setSyncing(false);
+  function getPeriod() {
+    if (useCustom && customStart && customEnd) {
+      return { start: customStart, end: customEnd };
     }
+    return { start: months[selectedPeriod].start, end: months[selectedPeriod].end };
   }
 
-  // Step 2: Download files for existing vouchers
   async function handleCreate(tipo: "XML" | "PDF" | "CDR" | "MASIVO") {
     if (!companyId || creating) return;
     setCreating(tipo);
     try {
-      const period = months[selectedPeriod];
+      const period = getPeriod();
       const res = await fetch("/api/download-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,14 +137,14 @@ export default function DescargasPage() {
   const failedJobs = jobs.filter((j) => j.estado === "FAILED");
   const isConnected = credStatus?.lastTestOk === true;
   const hasCredentials = !!credStatus;
+  const period = getPeriod();
 
   return (
     <div className="flex flex-col h-full">
-      <Topbar title="Descargas SUNAT" subtitle="Descarga de comprobantes electrónicos" />
+      <Topbar title="Descargas SUNAT" subtitle="Descarga de archivos XML, PDF y CDR" />
 
       <div className="flex-1 overflow-auto p-6 space-y-5">
 
-        {/* No credentials warning */}
         {!hasCredentials && (
           <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -188,10 +158,10 @@ export default function DescargasPage() {
         )}
 
         {hasCredentials && !isConnected && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
-            <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0" />
-            <p className="text-sm text-blue-800 flex-1">
-              {credStatus?.lastTestOk === false ? "La conexión SUNAT falló. Verifica tus credenciales." : "Credenciales configuradas pero no probadas aún."}
+          <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl">
+            <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+            <p className="text-sm text-orange-800 flex-1">
+              {credStatus?.lastTestOk === false ? "Conexión SUNAT fallida — verifica credenciales." : "Credenciales no probadas aún."}
             </p>
             <Link href="/configuracion">
               <Button variant="outline" size="sm" className="gap-2 shrink-0">
@@ -200,6 +170,15 @@ export default function DescargasPage() {
             </Link>
           </div>
         )}
+
+        {/* Info banner */}
+        <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+          <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-blue-800">
+            <p className="font-semibold mb-0.5">¿Cómo funciona?</p>
+            <p>Selecciona el período y el tipo de archivo. El sistema descargará los archivos de los comprobantes que ya están registrados en el sistema para ese período. Para registrar nuevos comprobantes, ve a <Link href="/compras" className="underline font-medium">Compras</Link> o <Link href="/ventas" className="underline font-medium">Ventas</Link>.</p>
+          </div>
+        </div>
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -221,7 +200,7 @@ export default function DescargasPage() {
           </div>
         </div>
 
-        {/* Active jobs progress */}
+        {/* Active jobs */}
         {activeJobs.length > 0 && (
           <Card className="border-blue-200 bg-blue-50">
             <CardHeader className="pb-2 px-6 pt-4">
@@ -249,75 +228,73 @@ export default function DescargasPage() {
           </Card>
         )}
 
-        {/* Period selector */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-600 font-medium">Período:</span>
-          <select
-            value={selectedPeriod}
-            onChange={(e) => { setSelectedPeriod(Number(e.target.value)); setSyncResult(null); }}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {months.map((m, i) => (
-              <option key={i} value={i}>{m.label}</option>
-            ))}
-          </select>
-          <span className="text-xs text-gray-400">{months[selectedPeriod].start} → {months[selectedPeriod].end}</span>
-        </div>
-
-        {/* STEP 1: Sync */}
-        <Card className="border-blue-200">
+        {/* Download card */}
+        <Card>
           <CardHeader className="pb-3 px-6 pt-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
-              <div>
-                <CardTitle className="text-base">Sincronizar con SUNAT</CardTitle>
-                <p className="text-xs text-gray-500 mt-0.5">Descubre comprobantes nuevos del período seleccionado y los registra en el sistema</p>
-              </div>
-            </div>
+            <CardTitle className="text-base">Nueva Descarga</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <Button
-                onClick={handleSync}
-                disabled={syncing || !companyId || !isConnected}
-                className="gap-2"
-              >
-                {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                {syncing ? "Sincronizando..." : "Sincronizar ahora"}
-              </Button>
-              {syncResult && (
-                <div className={`flex items-center gap-2 text-sm ${syncResult.estado === "COMPLETED" ? "text-emerald-700" : "text-red-600"}`}>
-                  {syncResult.estado === "COMPLETED"
-                    ? <><CheckCircle2 className="w-4 h-4" /> {syncResult.docsNuevos} comprobantes nuevos descubiertos</>
-                    : <><XCircle className="w-4 h-4" /> {syncResult.errorMsg}</>
-                  }
+          <CardContent className="space-y-4">
+            {/* Period selector */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-sm font-medium text-gray-700 shrink-0">Período:</label>
+                <select
+                  value={useCustom ? "custom" : selectedPeriod}
+                  onChange={(e) => {
+                    if (e.target.value === "custom") {
+                      setUseCustom(true);
+                    } else {
+                      setUseCustom(false);
+                      setSelectedPeriod(Number(e.target.value));
+                    }
+                  }}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {months.map((m, i) => (
+                    <option key={i} value={i}>{m.label}</option>
+                  ))}
+                  <option value="custom">Rango personalizado...</option>
+                </select>
+                {!useCustom && (
+                  <span className="text-xs text-gray-400">{period.start} → {period.end}</span>
+                )}
+              </div>
+
+              {useCustom && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 shrink-0">Desde:</label>
+                    <Input
+                      type="date"
+                      value={customStart}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      className="w-40 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 shrink-0">Hasta:</label>
+                    <Input
+                      type="date"
+                      value={customEnd}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      className="w-40 text-sm"
+                    />
+                  </div>
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
 
-        {/* STEP 2: Download files */}
-        <Card>
-          <CardHeader className="pb-3 px-6 pt-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
-              <div>
-                <CardTitle className="text-base">Descargar Archivos</CardTitle>
-                <p className="text-xs text-gray-500 mt-0.5">Descarga los archivos XML, PDF y CDR de los comprobantes ya registrados</p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
+            {/* Download type buttons */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {(Object.entries(TIPO_CONFIG) as [keyof typeof TIPO_CONFIG, typeof TIPO_CONFIG[keyof typeof TIPO_CONFIG]][]).map(([tipo, config]) => {
                 const Icon = config.icon;
                 const isCreating = creating === tipo;
+                const disabled = !!creating || !companyId || (useCustom && (!customStart || !customEnd));
                 return (
                   <button
                     key={tipo}
                     onClick={() => handleCreate(tipo)}
-                    disabled={!!creating || !companyId}
+                    disabled={disabled}
                     className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${config.color}`}>
@@ -331,7 +308,7 @@ export default function DescargasPage() {
           </CardContent>
         </Card>
 
-        {/* Jobs history */}
+        {/* History */}
         <Card>
           <CardHeader className="pb-0 px-6 pt-4">
             <div className="flex items-center justify-between">
@@ -350,7 +327,7 @@ export default function DescargasPage() {
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <Download className="w-10 h-10 mb-3 opacity-30" />
                 <p className="text-sm font-medium">Sin descargas registradas</p>
-                <p className="text-xs mt-1">Sincroniza primero para descubrir comprobantes</p>
+                <p className="text-xs mt-1">Selecciona un período y tipo de archivo arriba</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

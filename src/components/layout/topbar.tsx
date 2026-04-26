@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Bell, Search, RefreshCw, ChevronDown, HelpCircle } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Bell, Search, RefreshCw, ChevronDown, HelpCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSession } from "@/lib/hooks/useSession";
+import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
 import Link from "next/link";
 
 interface TopbarProps {
@@ -29,16 +30,27 @@ interface AlertItem {
   leida: boolean;
 }
 
-// Current period label
-function currentPeriod() {
-  return new Date().toLocaleDateString("es-PE", { month: "long", year: "numeric" })
-    .replace(/^\w/, (c) => c.toUpperCase());
+function getMonths(n = 4) {
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const label = d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
+    const start = d.toISOString().split("T")[0];
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
+    return { label: label.charAt(0).toUpperCase() + label.slice(1), start, end };
+  });
 }
 
 export function Topbar({ title, subtitle }: TopbarProps) {
   const { session } = useSession();
+  const { activeCompany } = useActiveCompany();
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const companyId = session?.companyRoles[0]?.companyId;
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(0);
+  const companyId = session?.companyRoles[0]?.companyId ?? activeCompany?.id;
+  const months = getMonths(4);
 
   useEffect(() => {
     const run = async () => {
@@ -47,57 +59,93 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         const res = await fetch(`/api/alerts?companyId=${companyId}`);
         const json = await res.json();
         if (json.success) setAlerts(json.data.slice(0, 5));
-      } catch { /* silent — topbar alerts are non-critical */ }
+      } catch { /* silent */ }
     };
     run();
   }, [companyId]);
+
+  const handleSync = useCallback(async () => {
+    if (!companyId || syncing) return;
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const period = months[selectedMonth];
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId,
+          fechaInicio: period.start,
+          fechaFin: period.end,
+          downloadFiles: true,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        const n = json.data?.docsNuevos ?? 0;
+        setSyncMsg(n > 0 ? `${n} nuevos` : "Al día");
+      } else {
+        setSyncMsg("Error");
+      }
+    } catch {
+      setSyncMsg("Error");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  }, [companyId, syncing, months, selectedMonth]);
 
   const unreadCount = alerts.filter((a) => !a.leida).length;
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
-      {/* Left: Title */}
       <div>
         <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
         {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
       </div>
 
-      {/* Right: Actions */}
       <div className="flex items-center gap-2">
         {/* Search */}
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder="Buscar comprobante, RUC..."
-            className="pl-9 w-64 h-8 text-sm"
-          />
+          <Input placeholder="Buscar comprobante, RUC..." className="pl-9 w-64 h-8 text-sm" />
         </div>
 
-        {/* Sync button */}
-        <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
-          <RefreshCw className="w-3.5 h-3.5" />
-          Sincronizar
+        {/* Sync button — functional */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 hidden sm:flex"
+          onClick={handleSync}
+          disabled={syncing || !companyId}
+          title={`Sincronizar ${months[selectedMonth].label}`}
+        >
+          {syncing
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <RefreshCw className="w-3.5 h-3.5" />}
+          {syncMsg ?? "Sincronizar"}
         </Button>
 
-        {/* Period selector */}
+        {/* Period selector — functional */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1.5 capitalize">
-              {currentPeriod()}
+              {months[selectedMonth].label}
               <ChevronDown className="w-3.5 h-3.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>Período activo</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {Array.from({ length: 4 }, (_, i) => {
-              const d = new Date();
-              d.setMonth(d.getMonth() - i);
-              const label = d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
-              return (
-                <DropdownMenuItem key={i} className="capitalize">{label}</DropdownMenuItem>
-              );
-            })}
+            {months.map((m, i) => (
+              <DropdownMenuItem
+                key={i}
+                className={`capitalize cursor-pointer ${selectedMonth === i ? "font-semibold text-blue-600" : ""}`}
+                onClick={() => setSelectedMonth(i)}
+              >
+                {m.label}
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -116,9 +164,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
               <span>Notificaciones</span>
-              {unreadCount > 0 && (
-                <Badge variant="destructive" className="text-xs">{unreadCount} nuevas</Badge>
-              )}
+              {unreadCount > 0 && <Badge variant="destructive" className="text-xs">{unreadCount} nuevas</Badge>}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {alerts.length === 0 ? (
