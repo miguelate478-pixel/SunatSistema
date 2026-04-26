@@ -15,14 +15,15 @@ import { storage } from "@/lib/storage";
 import { jobQueue, JOB_TYPES, type JobPayload } from "./index";
 import { getSunatProviderForCompany, toUserMessage } from "@/lib/sunat";
 import { logger } from "@/lib/logger";
+import { Prisma } from "@prisma/client";
 
 interface DownloadParams {
   serie?: string;
   numero?: string;
   fechaInicio?: string;
   fechaFin?: string;
-  voucherIds?: string[];  // descarga específica por IDs
-  skipXML?: boolean;      // omitir XML (ya importado)
+  voucherIds?: string[];
+  skipXML?: boolean;
 }
 
 async function processDownload(
@@ -33,23 +34,21 @@ async function processDownload(
 ): Promise<{ docsOk: number; docsError: number }> {
   const provider = await getSunatProviderForCompany(companyId);
 
-  // Build voucher query
-  let voucherWhere: Parameters<typeof prisma.voucher.findMany>[0]["where"] = {
+  // Build voucher query with explicit Prisma type
+  const voucherWhere: Prisma.VoucherWhereInput = {
     companyId,
     deletedAt: null,
   };
 
   if (params.voucherIds && params.voucherIds.length > 0) {
-    // Specific vouchers (e.g. after XML import)
-    voucherWhere = { ...voucherWhere, id: { in: params.voucherIds } };
+    voucherWhere.id = { in: params.voucherIds };
   } else {
-    // Date range
-    if (params.serie) voucherWhere = { ...voucherWhere, serie: params.serie };
-    if (params.numero) voucherWhere = { ...voucherWhere, numero: params.numero };
+    if (params.serie) voucherWhere.serie = params.serie;
+    if (params.numero) voucherWhere.numero = params.numero;
     if (params.fechaInicio && params.fechaFin) {
-      voucherWhere = {
-        ...voucherWhere,
-        fechaEmision: { gte: new Date(params.fechaInicio), lte: new Date(params.fechaFin) },
+      voucherWhere.fechaEmision = {
+        gte: new Date(params.fechaInicio),
+        lte: new Date(params.fechaFin),
       };
     }
   }
