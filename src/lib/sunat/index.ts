@@ -63,9 +63,11 @@ export async function getSunatProviderForCompany(companyId: string): Promise<ISu
   const clientId = process.env.SUNAT_CLIENT_ID;
   const clientSecret = process.env.SUNAT_CLIENT_SECRET;
   const ruc = process.env.SUNAT_RUC;
+  const usuarioSol = process.env.SUNAT_USUARIO_SOL ?? "";
+  const claveSol = process.env.SUNAT_CLAVE_SOL ?? "";
 
   if (clientId && clientSecret && ruc) {
-    return new RealSunatProvider({ clientId, clientSecret, ruc });
+    return new RealSunatProvider({ clientId, clientSecret, ruc, usuarioSol, claveSol });
   }
 
   logger.warn("[SUNAT] No credentials found, using mock provider", { companyId });
@@ -78,6 +80,8 @@ export function getSunatProvider(): ISunatProvider {
   const clientId = process.env.SUNAT_CLIENT_ID;
   const clientSecret = process.env.SUNAT_CLIENT_SECRET;
   const ruc = process.env.SUNAT_RUC;
+  const usuarioSol = process.env.SUNAT_USUARIO_SOL ?? "";
+  const claveSol = process.env.SUNAT_CLAVE_SOL ?? "";
   if (!clientId || !clientSecret || !ruc) return new MockSunatProvider();
-  return new RealSunatProvider({ clientId, clientSecret, ruc });
+  return new RealSunatProvider({ clientId, clientSecret, ruc, usuarioSol, claveSol });
 }
