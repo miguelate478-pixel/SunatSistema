@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireCompanyAccess } from "@/lib/auth/session";
+import { requireCompanyAccess, requireRole } from "@/lib/auth/session";
 import { voucherService } from "@/server/services/voucher.service";
 import { voucherQuerySchema } from "@/lib/validators/voucher";
 import prisma from "@/lib/db/prisma";
+import { z } from "zod";
+
+// ── GET — list vouchers ────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,8 +16,6 @@ export async function GET(request: NextRequest) {
     await requireCompanyAccess(companyId);
 
     const direccion = searchParams.get("tipo"); // "COMPRA" | "VENTA" | null
-
-    // Build query — strip "COMPRA"/"VENTA" from tipo (not real voucher types)
     const tipoParam = searchParams.get("tipo");
     const isDirectionFilter = tipoParam === "COMPRA" || tipoParam === "VENTA";
 
@@ -29,7 +30,6 @@ export async function GET(request: NextRequest) {
       limit: parseInt(searchParams.get("limit") || "50"),
     });
 
-    // If filtering by COMPRA/VENTA, add RUC filter
     let rucFilter: { rucReceptor?: string; rucEmisor?: string } = {};
     if (direccion === "COMPRA" || direccion === "VENTA") {
       const company = await prisma.company.findUnique({ where: { id: companyId } });
@@ -63,12 +63,10 @@ export async function GET(request: NextRequest) {
         tieneCDR: v.tieneCDR,
         estado: v.estado,
         afectoDetraccion: v.afectoDetraccion,
-        // Flat detraction fields (from DB columns)
         porcentajeDetraccion: v.porcentajeDetraccion ? Number(v.porcentajeDetraccion) : null,
         montoDetraccion: v.montoDetraccion ? Number(v.montoDetraccion) : null,
         estadoDetraccion: v.estadoDetraccion ?? null,
         observaciones: v.observaciones ?? null,
-        // Nested detraction object (from relation)
         detraccion: v.detraction ? {
           porcentaje: Number(v.detraction.porcentaje),
           monto: Number(v.detraction.monto),
@@ -79,6 +77,89 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Error al obtener comprobantes";
+    return NextResponse.json({ success: false, error: msg }, { status: msg === "No autenticado" ? 401 : msg === "No autorizado" ? 403 : 400 });
+  }
+}
+
+// ── POST — create voucher ──────────────────────────────────────────────────────
+
+const createSchema = z.object({
+  companyId: z.string().uuid(),
+  tipo: z.enum(["FACTURA", "BOLETA", "NOTA_CREDITO", "NOTA_DEBITO", "RECIBO"]),
+  serie: z.string().min(1).max(10),
+  numero: z.string().min(1).max(20),
+  fechaEmision: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  fechaVencimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  rucEmisor: z.string().length(11),
+  razonSocialEmisor: z.string().min(1),
+  rucReceptor: z.string().length(11),
+  razonSocialReceptor: z.string().min(1),
+  moneda: z.enum(["PEN", "USD"]).default("PEN"),
+  subtotal: z.number().min(0),
+  igv: z.number().min(0),
+  total: z.number().min(0),
+  estado: z.enum(["ACEPTADO", "RECHAZADO", "PENDIENTE", "ANULADO", "OBSERVADO"]).default("PENDIENTE"),
+  afectoDetraccion: z.boolean().default(false),
+  porcentajeDetraccion: z.number().optional(),
+  montoDetraccion: z.number().optional(),
+  observaciones: z.string().optional(),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await requireRole(["SUPER_ADMIN", "ADMIN_EMPRESA", "CONTABILIDAD"]);
+    const body = await request.json();
+    const data = createSchema.parse(body);
+
+    await requireCompanyAccess(data.companyId);
+
+    // Check for duplicate
+    const existing = await prisma.voucher.findFirst({
+      where: { companyId: data.companyId, serie: data.serie, numero: data.numero, deletedAt: null },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { success: false, error: `El comprobante ${data.serie}-${data.numero} ya existe` },
+        { status: 409 }
+      );
+    }
+
+    const voucher = await prisma.voucher.create({
+      data: {
+        companyId: data.companyId,
+        tipo: data.tipo,
+        serie: data.serie,
+        numero: data.numero,
+        fechaEmision: new Date(data.fechaEmision),
+        fechaVencimiento: data.fechaVencimiento ? new Date(data.fechaVencimiento) : null,
+        rucEmisor: data.rucEmisor,
+        razonSocialEmisor: data.razonSocialEmisor,
+        rucReceptor: data.rucReceptor,
+        razonSocialReceptor: data.razonSocialReceptor,
+        moneda: data.moneda,
+        subtotal: data.subtotal,
+        igv: data.igv,
+        total: data.total,
+        estado: data.estado,
+        tieneXML: false,
+        tienePDF: false,
+        tieneCDR: false,
+        afectoDetraccion: data.afectoDetraccion,
+        porcentajeDetraccion: data.porcentajeDetraccion ?? null,
+        montoDetraccion: data.montoDetraccion ?? null,
+        estadoDetraccion: data.afectoDetraccion ? "PENDIENTE" : null,
+        observaciones: data.observaciones ?? null,
+        createdById: session.id,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { id: voucher.id, serie: voucher.serie, numero: voucher.numero },
+      message: `Comprobante ${data.serie}-${data.numero} registrado correctamente`,
+    }, { status: 201 });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Error al crear comprobante";
     return NextResponse.json({ success: false, error: msg }, { status: msg === "No autenticado" ? 401 : msg === "No autorizado" ? 403 : 400 });
   }
 }

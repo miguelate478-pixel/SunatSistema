@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ComprobanteDetail } from "@/components/comprobantes/comprobante-detail";
 import type { VoucherDetail } from "@/components/comprobantes/comprobante-detail";
+import { NuevoComprobanteModal } from "@/components/comprobantes/nuevo-comprobante-modal";
+import { ImportarCSVModal } from "@/components/comprobantes/importar-csv-modal";
 import { useVouchers, type Voucher } from "@/lib/hooks/useVouchers";
+import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   Search,
@@ -19,6 +22,8 @@ import {
   FileDown,
   RefreshCw,
   AlertTriangle,
+  Plus,
+  Upload,
 } from "lucide-react";
 
 function VentasSkeleton() {
@@ -83,11 +88,14 @@ function VentasSkeleton() {
 
 export default function VentasPage() {
   const { vouchers, loading, error, refetch } = useVouchers("VENTA");
+  const { activeCompany } = useActiveCompany();
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterTipo, setFilterTipo] = useState("todos");
   const [selectedDoc, setSelectedDoc] = useState<VoucherDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return vouchers.filter((c) => {
@@ -203,15 +211,19 @@ export default function VentasPage() {
               <div className="flex gap-2 ml-auto">
                 <Button variant="outline" size="sm" className="gap-2" onClick={refetch}>
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Sincronizar
+                  Actualizar
+                </Button>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => setImportarOpen(true)}>
+                  <Upload className="w-3.5 h-3.5" />
+                  Importar CSV
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2">
                   <FileDown className="w-3.5 h-3.5" />
-                  Exportar Excel
+                  Exportar
                 </Button>
-                <Button size="sm" className="gap-2">
-                  <Download className="w-3.5 h-3.5" />
-                  Descargar Masivo
+                <Button size="sm" className="gap-2" onClick={() => setNuevoOpen(true)}>
+                  <Plus className="w-3.5 h-3.5" />
+                  Nueva Factura
                 </Button>
               </div>
             </div>
@@ -315,6 +327,20 @@ export default function VentasPage() {
       </div>
 
       <ComprobanteDetail comprobante={selectedDoc} open={detailOpen} onClose={() => setDetailOpen(false)} />
+      <NuevoComprobanteModal
+        open={nuevoOpen}
+        onClose={() => setNuevoOpen(false)}
+        companyId={activeCompany?.id ?? ""}
+        companyRuc={activeCompany?.ruc ?? ""}
+        mode="VENTA"
+        onCreated={refetch}
+      />
+      <ImportarCSVModal
+        open={importarOpen}
+        onClose={() => setImportarOpen(false)}
+        companyId={activeCompany?.id ?? ""}
+        onImported={refetch}
+      />
     </div>
   );
 }
