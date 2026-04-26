@@ -39,8 +39,8 @@ async function main() {
   const company = await prisma.company.create({
     data: {
       ruc: "20610169849",
-      razonSocial: "CORPORACIÓN ANDINA S.A.C.",
-      nombreComercial: "CorpAndina",
+      razonSocial: "SHERMAN S.A.C.",
+      nombreComercial: "Sherman",
       direccion: "Av. Javier Prado Este 123, San Isidro, Lima",
       telefono: "01-4567890",
       email: "contacto@corpandina.com",

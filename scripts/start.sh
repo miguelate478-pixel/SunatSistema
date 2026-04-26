@@ -8,6 +8,7 @@ npx prisma migrate resolve --rolled-back 20260425000000_update_company_ruc 2>/de
 npx prisma migrate resolve --rolled-back 20260426000000_reset_sunat_credentials 2>/dev/null || true
 npx prisma migrate resolve --rolled-back 20260426100000_add_sol_credentials 2>/dev/null || true
 npx prisma migrate resolve --rolled-back 20260426200000_update_company_name 2>/dev/null || true
+npx prisma migrate resolve --rolled-back 20260427000000_update_company_name_sherman 2>/dev/null || true
 npx prisma migrate deploy
 npx tsx prisma/seed.deploy.ts
 echo "Starting Next.js on PORT=${PORT}"

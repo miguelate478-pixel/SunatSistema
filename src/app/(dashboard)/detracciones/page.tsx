@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDetracciones } from "@/lib/hooks/useDetracciones";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Percent, AlertTriangle, CheckCircle2, Clock, Download, FileDown, RefreshCw } from "lucide-react";
+import { exportDetracciones } from "@/lib/export";
 
 function DetraccionesSkeleton() {
   return (
@@ -152,11 +153,10 @@ export default function DetraccionesPage() {
                   <RefreshCw className="w-3.5 h-3.5" />
                   Actualizar
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => exportDetracciones(detracciones as unknown as Record<string, unknown>[], `detracciones_${new Date().toISOString().split("T")[0]}.csv`)} disabled={detracciones.length === 0}>
                   <FileDown className="w-3.5 h-3.5" />
-                  Exportar Reporte
-                </Button>
-              </div>
+                  Exportar Excel
+                </Button>              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">

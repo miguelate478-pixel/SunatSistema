@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useSession } from "@/lib/hooks/useSession";
 import { AlertTriangle, Clock, CheckCircle2, FileDown, RefreshCw, CreditCard } from "lucide-react";
+import { exportCuentas } from "@/lib/export";
 
 interface AccountReceivable {
   id: string;
@@ -155,8 +156,8 @@ export default function CuentasCobrarPage() {
                 <Button variant="outline" size="sm" className="gap-2" onClick={load}>
                   <RefreshCw className="w-3.5 h-3.5" />Actualizar
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <FileDown className="w-3.5 h-3.5" />Exportar
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => exportCuentas(accounts as unknown as Record<string, unknown>[], "cobrar", `cuentas_cobrar_${new Date().toISOString().split("T")[0]}.csv`)} disabled={accounts.length === 0}>
+                  <FileDown className="w-3.5 h-3.5" />Exportar Excel
                 </Button>
               </div>
             </div>

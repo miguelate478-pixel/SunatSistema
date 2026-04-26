@@ -15,16 +15,10 @@ import { ImportarCSVModal } from "@/components/comprobantes/importar-csv-modal";
 import { useVouchers, type Voucher } from "@/lib/hooks/useVouchers";
 import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { exportVouchers } from "@/lib/export";
 import {
-  Search,
-  Download,
-  Eye,
-  FileText,
-  AlertTriangle,
-  RefreshCw,
-  FileDown,
-  Plus,
-  Upload,
+  Search, Download, Eye, FileText, AlertTriangle,
+  RefreshCw, FileDown, Plus, Upload, ChevronLeft, ChevronRight, Package,
 } from "lucide-react";
 
 function ComprasSkeleton() {
@@ -89,7 +83,7 @@ function ComprasSkeleton() {
 }
 
 export default function ComprasPage() {
-  const { vouchers, loading, error, refetch, updateFilters, filters } = useVouchers("COMPRA");
+  const { vouchers, loading, error, refetch, updateFilters, filters, pagination } = useVouchers("COMPRA");
   const { activeCompany } = useActiveCompany();
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
@@ -97,6 +91,9 @@ export default function ComprasPage() {
   const [selectedDoc, setSelectedDoc] = useState<VoucherDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [importarOpen, setImportarOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloadingZip, setDownloadingZip] = useState(false);
   const [importarOpen, setImportarOpen] = useState(false);
 
   const filtered = vouchers; // Filtering is done server-side via API params
@@ -110,7 +107,52 @@ export default function ComprasPage() {
     setDetailOpen(true);
   }
 
-  if (loading) {
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === vouchers.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(vouchers.map((v) => v.id)));
+    }
+  }
+
+  function handleExport() {
+    exportVouchers(vouchers as unknown as Record<string, unknown>[], `compras_${new Date().toISOString().split("T")[0]}.csv`);
+  }
+
+  async function handleDownloadZip() {
+    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : vouchers.map((v) => v.id);
+    if (!ids.length || !activeCompany) return;
+    setDownloadingZip(true);
+    try {
+      const res = await fetch("/api/vouchers/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: activeCompany.id, voucherIds: ids }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        alert(json.error ?? "No hay archivos disponibles para descargar");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `compras_${new Date().toISOString().split("T")[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ } finally {
+      setDownloadingZip(false);
+    }
+  }  if (loading) {
     return <ComprasSkeleton />;
   }
 
@@ -228,9 +270,13 @@ export default function ComprasPage() {
                   <Upload className="w-3.5 h-3.5" />
                   Importar CSV
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={handleExport} disabled={vouchers.length === 0}>
                   <FileDown className="w-3.5 h-3.5" />
-                  Exportar
+                  Exportar Excel
+                </Button>
+                <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadZip} disabled={downloadingZip || vouchers.length === 0}>
+                  {downloadingZip ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                  {selectedIds.size > 0 ? `ZIP (${selectedIds.size})` : "ZIP Masivo"}
                 </Button>
                 <Button size="sm" className="gap-2" onClick={() => setNuevoOpen(true)}>
                   <Plus className="w-3.5 h-3.5" />
@@ -256,6 +302,9 @@ export default function ComprasPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-y border-gray-200">
                   <tr>
+                    <th className="py-3 px-3 w-8">
+                      <input type="checkbox" className="rounded" checked={selectedIds.size === vouchers.length && vouchers.length > 0} onChange={toggleSelectAll} />
+                    </th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Comprobante</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Proveedor</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha</th>
@@ -271,6 +320,9 @@ export default function ComprasPage() {
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map((comp) => (
                     <tr key={comp.id} className="hover:bg-gray-50 transition-colors group">
+                      <td className="py-3 px-3">
+                        <input type="checkbox" className="rounded" checked={selectedIds.has(comp.id)} onChange={() => toggleSelect(comp.id)} />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <div>
@@ -367,6 +419,24 @@ export default function ComprasPage() {
                   <FileText className="w-10 h-10 mb-3 opacity-30" />
                   <p className="text-sm font-medium">No se encontraron comprobantes</p>
                   <p className="text-xs mt-1">Ajusta los filtros de búsqueda</p>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {pagination && pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                  <p className="text-xs text-gray-500">
+                    Mostrando {((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} de {pagination.total} registros
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={pagination.page <= 1} onClick={() => updateFilters({ page: pagination.page - 1 })}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-xs text-gray-700 font-medium">Página {pagination.page} de {pagination.totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={pagination.page >= pagination.totalPages} onClick={() => updateFilters({ page: pagination.page + 1 })}>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

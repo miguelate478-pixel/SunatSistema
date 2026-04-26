@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useSession } from "@/lib/hooks/useSession";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Wallet } from "lucide-react";
+import { exportCuentas } from "@/lib/export";
 
 interface AccountPayable {
   id: string;
@@ -149,8 +150,8 @@ export default function CuentasPagarPage() {
                 <Button variant="outline" size="sm" className="gap-2" onClick={load}>
                   <RefreshCw className="w-3.5 h-3.5" />Actualizar
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <FileDown className="w-3.5 h-3.5" />Exportar
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => exportCuentas(accounts as unknown as Record<string, unknown>[], "pagar", `cuentas_pagar_${new Date().toISOString().split("T")[0]}.csv`)} disabled={accounts.length === 0}>
+                  <FileDown className="w-3.5 h-3.5" />Exportar Excel
                 </Button>
               </div>
             </div>
