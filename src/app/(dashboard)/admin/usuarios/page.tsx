@@ -18,7 +18,7 @@ interface UserItem {
   createdAt: string;
   companyRoles: Array<{
     companyId: string;
-    company: { razonSocial: string; ruc: string };
+    company: { razonSocial: string; nombreComercial?: string | null; ruc: string };
     role: { name: string };
   }>;
 }
