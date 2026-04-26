@@ -125,7 +125,7 @@ export default function DashboardPage() {
     <div className="flex flex-col h-full">
       <Topbar
         title="Dashboard"
-        subtitle="Resumen ejecutivo · Abril 2024"
+        subtitle={`Resumen ejecutivo · ${new Date().toLocaleDateString("es-PE", { month: "long", year: "numeric" })}`}
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -307,7 +307,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Top Proveedores - TODO: Connect to real data */}
+          {/* Top Proveedores */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -320,29 +320,28 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {[
-                { nombre: "Proveedor A", monto: 125000 },
-                { nombre: "Proveedor B", monto: 98000 },
-                { nombre: "Proveedor C", monto: 75000 },
-                { nombre: "Proveedor D", monto: 52000 },
-              ].map((prov, i) => (
-                <div key={prov.nombre} className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{prov.nombre}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <Progress value={(prov.monto / 125000) * 100} className="h-1 flex-1" />
-                      <span className="text-xs text-gray-500 shrink-0">{formatCurrency(prov.monto)}</span>
+              {summary.topProveedores.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">Sin compras registradas</p>
+              ) : (
+                summary.topProveedores.map((prov, i) => (
+                  <div key={prov.ruc} className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-900 truncate">{prov.nombre}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Progress value={(prov.monto / (summary.topProveedores[0]?.monto || 1)) * 100} className="h-1 flex-1" />
+                        <span className="text-xs text-gray-500 shrink-0">{formatCurrency(prov.monto)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
 
-          {/* Alertas recientes - TODO: Connect to real alerts */}
+          {/* Alertas recientes */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -355,31 +354,31 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              {[
-                { titulo: "XML faltante", descripcion: "Factura F001-000123", tipo: "ERROR", leida: false },
-                { titulo: "Detracción pendiente", descripcion: "Vence en 3 días", tipo: "WARNING", leida: false },
-                { titulo: "CDR descargado", descripcion: "Boleta B001-004567", tipo: "SUCCESS", leida: true },
-              ].map((alerta, i) => (
-                <div key={i} className="flex items-start gap-2.5 py-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                    alerta.tipo === "ERROR" ? "bg-red-500" :
-                    alerta.tipo === "WARNING" ? "bg-amber-500" :
-                    alerta.tipo === "SUCCESS" ? "bg-emerald-500" : "bg-blue-500"
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{alerta.titulo}</p>
-                    <p className="text-xs text-gray-500 truncate">{alerta.descripcion}</p>
+              {summary.recentAlertas.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">Sin alertas recientes</p>
+              ) : (
+                summary.recentAlertas.map((alerta) => (
+                  <div key={alerta.id} className="flex items-start gap-2.5 py-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                      alerta.tipo === "ERROR" ? "bg-red-500" :
+                      alerta.tipo === "WARNING" ? "bg-amber-500" :
+                      alerta.tipo === "SUCCESS" ? "bg-emerald-500" : "bg-blue-500"
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-900 truncate">{alerta.titulo}</p>
+                      <p className="text-xs text-gray-500 truncate">{alerta.descripcion}</p>
+                    </div>
+                    {!alerta.leida && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mt-1.5" />
+                    )}
                   </div>
-                  {!alerta.leida && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mt-1.5" />
-                  )}
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Recent documents - TODO: Connect to real comprobantes */}
+        {/* Recent documents */}
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -408,55 +407,59 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {[
-                    { serie: "F001", numero: "000123", tipo: "FACTURA", razonSocialEmisor: "CORPORACIÓN ANDINA S.A.C.", rucEmisor: "20610169849", fechaEmision: "2024-04-15", total: 12500, moneda: "PEN", tieneXML: true, tienePDF: true, tieneCDR: true, estado: "ACEPTADO" },
-                    { serie: "B001", numero: "004567", tipo: "BOLETA", razonSocialEmisor: "TECNOLOGÍA AVANZADA E.I.R.L.", rucEmisor: "10456789012", fechaEmision: "2024-04-14", total: 8500, moneda: "PEN", tieneXML: true, tienePDF: false, tieneCDR: true, estado: "OBSERVADO" },
-                    { serie: "F001", numero: "000124", tipo: "FACTURA", razonSocialEmisor: "INSUMOS INDUSTRIALES S.A.", rucEmisor: "20123456789", fechaEmision: "2024-04-13", total: 18500, moneda: "USD", tieneXML: true, tienePDF: true, tieneCDR: false, estado: "PENDIENTE" },
-                  ].map((comp, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono font-medium text-gray-900">
-                            {comp.serie}-{comp.numero}
-                          </span>
-                          <Badge variant={
-                            comp.tipo === "FACTURA" ? "info" :
-                            comp.tipo === "NOTA_CREDITO" ? "warning" : "secondary"
-                          } className="text-xs">
-                            {comp.tipo === "FACTURA" ? "FAC" :
-                             comp.tipo === "NOTA_CREDITO" ? "NC" :
-                             comp.tipo === "BOLETA" ? "BOL" : comp.tipo}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <p className="text-xs font-medium text-gray-900 truncate max-w-[180px]">{comp.razonSocialEmisor}</p>
-                        <p className="text-xs text-gray-400">{comp.rucEmisor}</p>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs text-gray-600">{formatDate(comp.fechaEmision)}</td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className="text-xs font-semibold text-gray-900">{formatCurrency(comp.total)}</span>
-                        {comp.moneda === "USD" && <span className="text-xs text-gray-400 ml-1">USD</span>}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className={`text-xs font-mono px-1 rounded ${comp.tieneXML ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>XML</span>
-                          <span className={`text-xs font-mono px-1 rounded ${comp.tienePDF ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>PDF</span>
-                          <span className={`text-xs font-mono px-1 rounded ${comp.tieneCDR ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>CDR</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <Badge variant={
-                          comp.estado === "ACEPTADO" ? "success" :
-                          comp.estado === "RECHAZADO" ? "destructive" :
-                          comp.estado === "OBSERVADO" ? "warning" :
-                          comp.estado === "PENDIENTE" ? "secondary" : "outline"
-                        }>
-                          {comp.estado}
-                        </Badge>
+                  {summary.recentVouchers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-xs text-gray-400">
+                        Sin comprobantes registrados
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    summary.recentVouchers.map((comp) => (
+                      <tr key={comp.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-medium text-gray-900">
+                              {comp.serie}-{comp.numero}
+                            </span>
+                            <Badge variant={
+                              comp.tipo === "FACTURA" ? "info" :
+                              comp.tipo === "NOTA_CREDITO" ? "warning" : "secondary"
+                            } className="text-xs">
+                              {comp.tipo === "FACTURA" ? "FAC" :
+                               comp.tipo === "NOTA_CREDITO" ? "NC" :
+                               comp.tipo === "BOLETA" ? "BOL" : comp.tipo}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <p className="text-xs font-medium text-gray-900 truncate max-w-[180px]">{comp.razonSocialEmisor}</p>
+                          <p className="text-xs text-gray-400">{comp.rucEmisor}</p>
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-gray-600">{formatDate(comp.fechaEmision)}</td>
+                        <td className="py-2.5 px-3 text-right">
+                          <span className="text-xs font-semibold text-gray-900">{formatCurrency(comp.total)}</span>
+                          {comp.moneda === "USD" && <span className="text-xs text-gray-400 ml-1">USD</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className={`text-xs font-mono px-1 rounded ${comp.tieneXML ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>XML</span>
+                            <span className={`text-xs font-mono px-1 rounded ${comp.tienePDF ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>PDF</span>
+                            <span className={`text-xs font-mono px-1 rounded ${comp.tieneCDR ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>CDR</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge variant={
+                            comp.estado === "ACEPTADO" ? "success" :
+                            comp.estado === "RECHAZADO" ? "destructive" :
+                            comp.estado === "OBSERVADO" ? "warning" :
+                            comp.estado === "PENDIENTE" ? "secondary" : "outline"
+                          }>
+                            {comp.estado}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

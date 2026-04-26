@@ -172,19 +172,30 @@ export class DashboardService {
       porcentaje: totalDocs > 0 ? Math.round((item._count / totalDocs) * 100) : 0,
     }));
 
-    // Flujo de caja — last 4 weeks derived from vouchers
-    const flujoCaja = Array.from({ length: 4 }, (_, i) => {
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - (3 - i) * 7);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 7);
-      return {
-        semana: `Sem ${i + 1}`,
-        ingresos: ventasCompras[ventasCompras.length - 1]?.ventas ?? 0,
-        egresos: ventasCompras[ventasCompras.length - 1]?.compras ?? 0,
-        neto: (ventasCompras[ventasCompras.length - 1]?.ventas ?? 0) - (ventasCompras[ventasCompras.length - 1]?.compras ?? 0),
-      };
-    });
+    // Flujo de caja — last 4 weeks with real per-week data
+    const flujoCaja = await Promise.all(
+      Array.from({ length: 4 }, (_, i) => {
+        const weekEnd = new Date(now);
+        weekEnd.setDate(now.getDate() - (3 - i) * 7);
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekEnd.getDate() - 6);
+        return Promise.all([
+          prisma.voucher.aggregate({
+            where: { companyId, deletedAt: null, rucEmisor: company.ruc, fechaEmision: { gte: weekStart, lte: weekEnd } },
+            _sum: { total: true },
+          }),
+          prisma.voucher.aggregate({
+            where: { companyId, deletedAt: null, rucReceptor: company.ruc, fechaEmision: { gte: weekStart, lte: weekEnd } },
+            _sum: { total: true },
+          }),
+        ]).then(([ventas, compras]) => ({
+          semana: `Sem ${i + 1}`,
+          ingresos: Number(ventas._sum.total || 0),
+          egresos: Number(compras._sum.total || 0),
+          neto: Number(ventas._sum.total || 0) - Number(compras._sum.total || 0),
+        }));
+      })
+    );
 
     return {
       ventasCompras,
@@ -252,6 +263,30 @@ export class DashboardService {
       nombre: item.razonSocialReceptor,
       monto: Number(item._sum.total || 0),
       facturas: item._count,
+    }));
+  }
+
+  async getRecentAlertas(companyId: string, limit = 5) {
+    const alertas = await prisma.alert.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        tipo: true,
+        titulo: true,
+        descripcion: true,
+        leida: true,
+        createdAt: true,
+      },
+    });
+    return alertas.map((a) => ({
+      id: a.id,
+      tipo: a.tipo,
+      titulo: a.titulo,
+      descripcion: a.descripcion,
+      leida: a.leida,
+      fecha: a.createdAt.toISOString(),
     }));
   }
 }

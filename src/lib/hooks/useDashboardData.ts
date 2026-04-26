@@ -18,6 +18,30 @@ export interface DashboardSummary {
   detraccionesPendientes: number;
   impuestoProximo: number;
   diasParaImpuesto: number;
+  topProveedores: Array<{ ruc: string; nombre: string; monto: number; facturas: number }>;
+  recentVouchers: Array<{
+    id: string;
+    tipo: string;
+    serie: string;
+    numero: string;
+    fechaEmision: string;
+    razonSocialEmisor: string;
+    rucEmisor: string;
+    total: number;
+    moneda: string;
+    tieneXML: boolean;
+    tienePDF: boolean;
+    tieneCDR: boolean;
+    estado: string;
+  }>;
+  recentAlertas: Array<{
+    id: string;
+    tipo: string;
+    titulo: string;
+    descripcion: string;
+    leida: boolean;
+    fecha: string;
+  }>;
 }
 
 export interface ChartData {
@@ -44,7 +68,13 @@ async function fetchSummary(companyId: string): Promise<DashboardSummary> {
   const res = await fetch(`/api/dashboard/summary?companyId=${companyId}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.error || "Error al cargar resumen");
-  return json.data;
+  const d = json.data ?? {};
+  return {
+    ...d,
+    topProveedores: Array.isArray(d.topProveedores) ? d.topProveedores : [],
+    recentVouchers: Array.isArray(d.recentVouchers) ? d.recentVouchers : [],
+    recentAlertas: Array.isArray(d.recentAlertas) ? d.recentAlertas : [],
+  };
 }
 
 export function useDashboardData() {

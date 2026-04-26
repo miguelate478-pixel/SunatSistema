@@ -10,8 +10,14 @@ export async function GET(request: NextRequest) {
 
     await requireCompanyAccess(companyId);
 
-    const summary = await dashboardService.getSummary(companyId);
-    return NextResponse.json({ success: true, data: summary });
+    const [summary, topProveedores, recentVouchers, recentAlertas] = await Promise.all([
+      dashboardService.getSummary(companyId),
+      dashboardService.getTopProveedores(companyId, 4),
+      dashboardService.getRecentVouchers(companyId, 5),
+      dashboardService.getRecentAlertas(companyId, 5),
+    ]);
+
+    return NextResponse.json({ success: true, data: { ...summary, topProveedores, recentVouchers, recentAlertas } });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Error al obtener resumen";
     return NextResponse.json({ success: false, error: msg }, { status: msg === "No autenticado" ? 401 : msg === "No autorizado" ? 403 : 500 });
