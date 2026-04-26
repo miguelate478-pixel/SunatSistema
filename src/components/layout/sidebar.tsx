@@ -5,36 +5,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
-  ShoppingCart,
-  TrendingUp,
-  Percent,
-  FolderOpen,
-  AlertTriangle,
-  BarChart3,
-  Sparkles,
-  CreditCard,
-  Wallet,
-  Download,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Building2,
-  LogOut,
-  Check,
-  Users,
-  FileText,
+  LayoutDashboard, ShoppingCart, TrendingUp, Percent, FolderOpen,
+  AlertTriangle, BarChart3, Sparkles, CreditCard, Wallet, Download,
+  Settings, ChevronLeft, ChevronRight, Building2, LogOut, Check,
+  Users, FileText, KeyRound, X, Eye, EyeOff, Loader2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSession } from "@/lib/hooks/useSession";
 import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
@@ -73,6 +56,37 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { session, logout } = useSession();
   const { activeCompany, setActiveCompany, allCompanies } = useActiveCompany();
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savingPwd, setSavingPwd] = useState(false);
+
+  async function handleChangePwd(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPwd(true);
+    setPwdMsg(null);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setPwdMsg({ ok: true, text: "Contraseña actualizada correctamente" });
+        setCurrentPwd(""); setNewPwd("");
+        setTimeout(() => { setShowChangePwd(false); setPwdMsg(null); }, 1500);
+      } else {
+        setPwdMsg({ ok: false, text: json.error });
+      }
+    } catch {
+      setPwdMsg({ ok: false, text: "Error de conexión" });
+    } finally {
+      setSavingPwd(false);
+    }
+  }
 
   return (
     <aside
@@ -247,6 +261,13 @@ export function Sidebar() {
             >
               <LogOut className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setShowChangePwd(true)}
+              className="text-gray-500 hover:text-white transition-colors"
+              title="Cambiar contraseña"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
           </div>
         ) : (
           <button 
@@ -270,6 +291,42 @@ export function Sidebar() {
           <ChevronLeft className="w-3 h-3" />
         )}
       </button>
+
+      {/* Change password modal */}
+      {showChangePwd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h2 className="text-sm font-semibold text-gray-900">Cambiar contraseña</h2>
+              <button onClick={() => { setShowChangePwd(false); setPwdMsg(null); setCurrentPwd(""); setNewPwd(""); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleChangePwd} className="p-5 space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700">Contraseña actual</label>
+                <div className="relative">
+                  <Input type={showPwd ? "text" : "password"} value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} required disabled={savingPwd} className="pr-9" />
+                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700">Nueva contraseña</label>
+                <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required minLength={8} disabled={savingPwd} placeholder="Mínimo 8 caracteres" />
+              </div>
+              {pwdMsg && (
+                <p className={`text-xs ${pwdMsg.ok ? "text-emerald-600" : "text-red-600"}`}>{pwdMsg.text}</p>
+              )}
+              <Button type="submit" size="sm" className="w-full gap-2" disabled={savingPwd}>
+                {savingPwd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+                {savingPwd ? "Guardando..." : "Actualizar contraseña"}
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

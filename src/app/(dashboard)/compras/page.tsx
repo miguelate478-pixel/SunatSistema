@@ -94,7 +94,6 @@ export default function ComprasPage() {
   const [importarOpen, setImportarOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [downloadingZip, setDownloadingZip] = useState(false);
-  const [importarOpen, setImportarOpen] = useState(false);
 
   const filtered = vouchers; // Filtering is done server-side via API params
 

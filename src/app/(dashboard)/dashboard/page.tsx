@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardData } from "@/lib/hooks/useDashboardData";
+import { useActiveCompany } from "@/lib/hooks/useActiveCompany";
+import { OnboardingBanner } from "@/components/onboarding/onboarding-banner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   ShoppingCart,
@@ -83,6 +85,7 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const { summary, charts, loading, error } = useDashboardData();
+  const { activeCompany } = useActiveCompany();
 
   if (loading) return <DashboardSkeleton />;
 
@@ -141,6 +144,15 @@ export default function DashboardPage() {
               <Button variant="destructive" size="sm">Ver documentos</Button>
             </Link>
           </div>
+        )}
+
+        {/* Onboarding banner — shown when no vouchers yet */}
+        {summary.documentosDescargados === 0 && (
+          <OnboardingBanner
+            hasCredentials={!!activeCompany}
+            credentialsOk={false}
+            hasVouchers={false}
+          />
         )}
 
         {/* KPI Grid - Row 1 */}
