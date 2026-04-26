@@ -18,16 +18,17 @@ export async function GET(request: NextRequest) {
     const direccion = searchParams.get("tipo"); // "COMPRA" | "VENTA" | null
     const tipoParam = searchParams.get("tipo");
     const isDirectionFilter = tipoParam === "COMPRA" || tipoParam === "VENTA";
+    const tipoDocParam = searchParams.get("tipoDoc"); // FACTURA, BOLETA, etc.
 
     const query = voucherQuerySchema.parse({
       companyId,
-      tipo: isDirectionFilter ? undefined : (tipoParam || undefined),
+      tipo: tipoDocParam || (isDirectionFilter ? undefined : (tipoParam || undefined)),
       estado: searchParams.get("estado") || undefined,
       fechaInicio: searchParams.get("fechaInicio") || undefined,
       fechaFin: searchParams.get("fechaFin") || undefined,
       search: searchParams.get("search") || undefined,
       page: parseInt(searchParams.get("page") || "1"),
-      limit: parseInt(searchParams.get("limit") || "50"),
+      limit: parseInt(searchParams.get("limit") || "100"),
     });
 
     let rucFilter: { rucReceptor?: string; rucEmisor?: string } = {};

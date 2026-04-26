@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +89,7 @@ function ComprasSkeleton() {
 }
 
 export default function ComprasPage() {
-  const { vouchers, loading, error, refetch } = useVouchers("COMPRA");
+  const { vouchers, loading, error, refetch, updateFilters, filters } = useVouchers("COMPRA");
   const { activeCompany } = useActiveCompany();
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
@@ -99,18 +99,7 @@ export default function ComprasPage() {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [importarOpen, setImportarOpen] = useState(false);
 
-  const filtered = useMemo(() => {
-    return vouchers.filter((c) => {
-      const matchSearch =
-        !search ||
-        c.razonSocialEmisor.toLowerCase().includes(search.toLowerCase()) ||
-        c.rucEmisor.includes(search) ||
-        `${c.serie}-${c.numero}`.includes(search);
-      const matchEstado = filterEstado === "todos" || c.estado === filterEstado;
-      const matchTipo = filterTipo === "todos" || c.tipo === filterTipo;
-      return matchSearch && matchEstado && matchTipo;
-    });
-  }, [vouchers, search, filterEstado, filterTipo]);
+  const filtered = vouchers; // Filtering is done server-side via API params
 
   const totalCompras = filtered.reduce((sum, c) => sum + (c.total > 0 ? c.total : 0), 0);
   const totalIGV = filtered.reduce((sum, c) => sum + (c.igv || 0), 0);
@@ -183,11 +172,14 @@ export default function ComprasPage() {
                 <Input
                   placeholder="Buscar por RUC, razón social, serie..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    updateFilters({ search: e.target.value || undefined });
+                  }}
                   className="pl-9"
                 />
               </div>
-              <Select value={filterTipo} onValueChange={setFilterTipo}>
+              <Select value={filterTipo} onValueChange={(v) => { setFilterTipo(v); updateFilters({ tipoDoc: v === "todos" ? undefined : v }); }}>
                 <SelectTrigger className="w-44">
                   <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
@@ -199,7 +191,7 @@ export default function ComprasPage() {
                   <SelectItem value="NOTA_DEBITO">Nota de Débito</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={filterEstado} onValueChange={setFilterEstado}>
+              <Select value={filterEstado} onValueChange={(v) => { setFilterEstado(v); updateFilters({ estado: v === "todos" ? undefined : v }); }}>
                 <SelectTrigger className="w-44">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
@@ -211,8 +203,24 @@ export default function ComprasPage() {
                   <SelectItem value="RECHAZADO">Rechazado</SelectItem>
                 </SelectContent>
               </Select>
+              {/* Period filter */}
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-36 text-xs"
+                  placeholder="Desde"
+                  onChange={(e) => updateFilters({ fechaInicio: e.target.value || undefined })}
+                />
+                <span className="text-gray-400 text-xs">—</span>
+                <Input
+                  type="date"
+                  className="w-36 text-xs"
+                  placeholder="Hasta"
+                  onChange={(e) => updateFilters({ fechaFin: e.target.value || undefined })}
+                />
+              </div>
               <div className="flex gap-2 ml-auto">
-                <Button variant="outline" size="sm" className="gap-2" onClick={refetch}>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
                   <RefreshCw className="w-3.5 h-3.5" />
                   Actualizar
                 </Button>
