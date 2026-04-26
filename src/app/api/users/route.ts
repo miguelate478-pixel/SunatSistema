@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
           where: { isActive: true },
           select: {
             companyId: true,
-            company: { select: { razonSocial: true, ruc: true } },
+            company: { select: { razonSocial: true, nombreComercial: true, ruc: true } },
             role: { select: { name: true } },
           },
         },
