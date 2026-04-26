@@ -416,6 +416,8 @@ model SunatCredential {
   ruc                 String
   clientId            String    // SUNAT OAuth client_id
   clientSecretEnc     String    @db.Text // AES-256 encrypted
+  usuarioSol          String    @default("") // RUC+usuario SOL, e.g. "MODDATOS"
+  claveSolEnc         String    @default("") @db.Text // AES-256 encrypted clave SOL
   isActive            Boolean   @default(true)
   lastTestedAt        DateTime?
   lastTestOk          Boolean?

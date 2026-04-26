@@ -18,6 +18,8 @@ interface SunatConfig {
   clientId: string;
   clientSecret: string;
   ruc: string;
+  usuarioSol: string; // e.g. "MODDATOS" — se concatena con RUC para el username
+  claveSol: string;
 }
 
 interface TokenCache {
@@ -58,10 +60,12 @@ export class RealSunatProvider implements ISunatProvider {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          grant_type: "client_credentials",
+          grant_type: "password",
           scope: "https://api-cpe.sunat.gob.pe",
           client_id: this.config.clientId,
           client_secret: this.config.clientSecret,
+          username: `${this.config.ruc}${this.config.usuarioSol}`,
+          password: this.config.claveSol,
         }),
       });
     } catch (err) {

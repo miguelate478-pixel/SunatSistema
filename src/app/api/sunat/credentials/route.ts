@@ -1,7 +1,11 @@
 /**
  * SUNAT Credentials management
- * GET  /api/sunat/credentials?companyId=...  — get status (never returns secret)
+ * GET  /api/sunat/credentials?companyId=...  — get status (never returns secrets)
  * POST /api/sunat/credentials                — save/update credentials
+ *
+ * SUNAT CPE API uses grant_type=password with:
+ *   username = RUC + usuarioSol  (e.g. "20610169849MODDATOS")
+ *   password = claveSol
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,8 +18,9 @@ const saveSchema = z.object({
   companyId: z.string().uuid(),
   ruc: z.string().length(11, "RUC debe tener 11 dígitos"),
   clientId: z.string().min(1, "client_id requerido"),
-  // clientSecret is optional when updating — empty string means "keep existing"
   clientSecret: z.string().optional(),
+  usuarioSol: z.string().min(1, "Usuario SOL requerido"),
+  claveSol: z.string().optional(), // optional on update — empty = keep existing
 });
 
 export async function GET(request: NextRequest) {
@@ -34,7 +39,8 @@ export async function GET(request: NextRequest) {
         companyId: cred.companyId,
         ruc: cred.ruc,
         clientId: cred.clientId,
-        // Never return clientSecret
+        usuarioSol: cred.usuarioSol,
+        // Never return secrets
         isActive: cred.isActive,
         lastTestedAt: cred.lastTestedAt?.toISOString() ?? null,
         lastTestOk: cred.lastTestOk,
@@ -54,48 +60,44 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = saveSchema.parse(body);
 
-    // Check if credentials already exist
     const existing = await prisma.sunatCredential.findUnique({ where: { companyId: data.companyId } });
 
-    // Verify company exists — RUC in credentials is independent of company.ruc
-    // (the SUNAT OAuth credentials can belong to any valid RUC)
     const company = await prisma.company.findUnique({
       where: { id: data.companyId },
-      select: { ruc: true, razonSocial: true },
+      select: { ruc: true },
     });
     if (!company) {
       return NextResponse.json({ success: false, error: "Empresa no encontrada" }, { status: 404 });
     }
 
-    // clientSecret is required only on first save
-    if (!existing && (!data.clientSecret || data.clientSecret.trim() === "")) {
-      return NextResponse.json(
-        { success: false, error: "client_secret es requerido para la primera configuración" },
-        { status: 400 }
-      );
+    // On first save, both secrets are required
+    if (!existing) {
+      if (!data.clientSecret || data.clientSecret.trim() === "") {
+        return NextResponse.json({ success: false, error: "client_secret es requerido para la primera configuración" }, { status: 400 });
+      }
+      if (!data.claveSol || data.claveSol.trim() === "") {
+        return NextResponse.json({ success: false, error: "Clave SOL es requerida para la primera configuración" }, { status: 400 });
+      }
     }
 
-    // Build update data — only update secret if provided
-    // Do NOT reset lastTestedAt/lastTestOk when only updating RUC/clientId
-    // Only reset test status if credentials actually changed
     const secretChanged = !!(data.clientSecret && data.clientSecret.trim() !== "");
-    const updateData: {
-      ruc: string;
-      clientId: string;
-      isActive: boolean;
-      lastTestedAt?: null;
-      lastTestOk?: null;
-      lastTestMessage?: null;
-      clientSecretEnc?: string;
-    } = {
+    const claveSolChanged = !!(data.claveSol && data.claveSol.trim() !== "");
+
+    const updateData: Record<string, unknown> = {
       ruc: data.ruc,
       clientId: data.clientId,
+      usuarioSol: data.usuarioSol,
       isActive: true,
     };
 
     if (secretChanged) {
       updateData.clientSecretEnc = encrypt(data.clientSecret!);
-      // Only reset test status when secret changes
+      updateData.lastTestedAt = null;
+      updateData.lastTestOk = null;
+      updateData.lastTestMessage = null;
+    }
+    if (claveSolChanged) {
+      updateData.claveSolEnc = encrypt(data.claveSol!);
       updateData.lastTestedAt = null;
       updateData.lastTestOk = null;
       updateData.lastTestMessage = null;
@@ -108,6 +110,8 @@ export async function POST(request: NextRequest) {
         ruc: data.ruc,
         clientId: data.clientId,
         clientSecretEnc: encrypt(data.clientSecret!),
+        usuarioSol: data.usuarioSol,
+        claveSolEnc: encrypt(data.claveSol!),
         isActive: true,
       },
       update: updateData,
@@ -115,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { id: cred.id, companyId: cred.companyId, ruc: cred.ruc, clientId: cred.clientId, isActive: cred.isActive },
+      data: { id: cred.id, companyId: cred.companyId, ruc: cred.ruc, clientId: cred.clientId, usuarioSol: cred.usuarioSol, isActive: cred.isActive },
       message: "Credenciales SUNAT guardadas correctamente",
     });
   } catch (error) {

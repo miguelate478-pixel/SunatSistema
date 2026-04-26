@@ -17,6 +17,7 @@ interface SunatCredStatus {
   id: string;
   ruc: string;
   clientId: string;
+  usuarioSol: string;
   isActive: boolean;
   lastTestedAt: string | null;
   lastTestOk: boolean | null;
@@ -37,7 +38,10 @@ export default function ConfiguracionPage() {
   const [lookingUpRuc, setLookingUpRuc] = useState(false);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [usuarioSol, setUsuarioSol] = useState("");
+  const [claveSol, setClaveSol] = useState("");
   const [showSecret, setShowSecret] = useState(false);
+  const [showClave, setShowClave] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -45,7 +49,7 @@ export default function ConfiguracionPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
 
-  // Load existing credentials status
+  // Load existing credentials
   useEffect(() => {
     const run = async () => {
       if (!companyId) return;
@@ -57,11 +61,12 @@ export default function ConfiguracionPage() {
           setCred(json.data);
           setRuc(json.data.ruc);
           setClientId(json.data.clientId);
+          setUsuarioSol(json.data.usuarioSol ?? "");
         } else {
-          // No credentials yet — pre-fill RUC from active company
           setCred(null);
           setRuc(activeCompany?.ruc ?? "");
           setClientId("");
+          setUsuarioSol("");
         }
       } catch { /* silent */ } finally {
         setLoadingCred(false);
@@ -70,7 +75,7 @@ export default function ConfiguracionPage() {
     run();
   }, [companyId, activeCompany?.ruc]);
 
-  // Auto-lookup RUC when 11 digits entered
+  // Auto-lookup RUC
   useEffect(() => {
     if (ruc.length !== 11) return;
     let cancelled = false;
@@ -79,11 +84,8 @@ export default function ConfiguracionPage() {
       try {
         const res = await fetch(`/api/sunat/ruc?ruc=${ruc}&companyId=${companyId ?? ""}`);
         const json = await res.json();
-        if (!cancelled && json.success) {
-          setRazonSocial(json.data.razonSocial);
-        } else if (!cancelled) {
-          setRazonSocial("");
-        }
+        if (!cancelled && json.success) setRazonSocial(json.data.razonSocial);
+        else if (!cancelled) setRazonSocial("");
       } catch {
         if (!cancelled) setRazonSocial("");
       } finally {
@@ -91,13 +93,8 @@ export default function ConfiguracionPage() {
       }
     };
     const timer = setTimeout(lookup, 500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      setRazonSocial("");
-      setLookingUpRuc(false);
-    };
-  }, [ruc]);
+    return () => { cancelled = true; clearTimeout(timer); setRazonSocial(""); setLookingUpRuc(false); };
+  }, [ruc, companyId]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -108,14 +105,14 @@ export default function ConfiguracionPage() {
       const res = await fetch("/api/sunat/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, ruc, clientId, clientSecret }),
+        body: JSON.stringify({ companyId, ruc, clientId, clientSecret, usuarioSol, claveSol }),
       });
       const json = await res.json();
       if (json.success) {
         setSaveMsg({ ok: true, text: "Credenciales guardadas correctamente" });
         setClientSecret("");
+        setClaveSol("");
         setTestResult(null);
-        // Reload status
         const r2 = await fetch(`/api/sunat/credentials?companyId=${companyId}`);
         const j2 = await r2.json();
         if (j2.success && j2.data) setCred(j2.data);
@@ -142,7 +139,6 @@ export default function ConfiguracionPage() {
       const json = await res.json();
       if (json.success) {
         setTestResult(json.data);
-        // Refresh cred status
         const r2 = await fetch(`/api/sunat/credentials?companyId=${companyId}`);
         const j2 = await r2.json();
         if (j2.success && j2.data) setCred(j2.data);
@@ -185,27 +181,11 @@ export default function ConfiguracionPage() {
                  connectionStatus === "failed" ? "Conexión SUNAT fallida" :
                  "Conexión SUNAT no probada"}
               </p>
-              {cred.lastTestMessage && (
-                <p className="text-xs text-gray-600 mt-0.5">{cred.lastTestMessage}</p>
-              )}
-              {cred.lastTestedAt && (
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Última prueba: {new Date(cred.lastTestedAt).toLocaleString("es-PE")}
-                </p>
-              )}
-              {cred.lastSyncAt && (
-                <p className="text-xs text-gray-400">
-                  Última sincronización: {new Date(cred.lastSyncAt).toLocaleString("es-PE")}
-                </p>
-              )}
+              {cred.lastTestMessage && <p className="text-xs text-gray-600 mt-0.5">{cred.lastTestMessage}</p>}
+              {cred.lastTestedAt && <p className="text-xs text-gray-400 mt-0.5">Última prueba: {new Date(cred.lastTestedAt).toLocaleString("es-PE")}</p>}
+              {cred.lastSyncAt && <p className="text-xs text-gray-400">Última sincronización: {new Date(cred.lastSyncAt).toLocaleString("es-PE")}</p>}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTest}
-              disabled={testing}
-              className="gap-2 shrink-0"
-            >
+            <Button variant="outline" size="sm" onClick={handleTest} disabled={testing} className="gap-2 shrink-0">
               {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               Probar conexión
             </Button>
@@ -219,8 +199,7 @@ export default function ConfiguracionPage() {
           }`}>
             {testResult.connected
               ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              : <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-            }
+              : <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />}
             <div>
               <p className={`text-sm font-semibold ${testResult.connected ? "text-emerald-800" : "text-red-800"}`}>
                 {testResult.connected ? "Conexión exitosa" : "Conexión fallida"}
@@ -240,7 +219,7 @@ export default function ConfiguracionPage() {
               <div>
                 <CardTitle className="text-base">Credenciales SUNAT</CardTitle>
                 <CardDescription className="text-xs">
-                  Credenciales OAuth2 del API CPE de SUNAT. El client_secret se cifra antes de guardarse.
+                  Credenciales OAuth2 del API CPE de SUNAT. Todos los secretos se cifran con AES-256.
                 </CardDescription>
               </div>
             </div>
@@ -248,9 +227,7 @@ export default function ConfiguracionPage() {
           <CardContent>
             {loadingCred ? (
               <div className="space-y-3">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+                {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
               </div>
             ) : (
               <form onSubmit={handleSave} className="space-y-4">
@@ -260,9 +237,9 @@ export default function ConfiguracionPage() {
                   <p className="text-sm font-semibold text-gray-900 mt-0.5">
                     {activeCompany?.nombreComercial ?? activeCompany?.razonSocial ?? "—"}
                   </p>
-                  <p className="text-xs text-gray-500">ID: {companyId ?? "—"}</p>
                 </div>
 
+                {/* RUC */}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">RUC de la empresa</label>
                   <Input
@@ -273,34 +250,24 @@ export default function ConfiguracionPage() {
                     required
                     disabled={saving}
                   />
-                  {lookingUpRuc && (
-                    <p className="text-xs text-blue-600 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Buscando razón social...
-                    </p>
-                  )}
-                  {razonSocial && !lookingUpRuc && ruc.length === 11 && (
-                    <p className="text-xs text-emerald-700 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> {razonSocial}
-                    </p>
-                  )}
-                  {!razonSocial && !lookingUpRuc && ruc.length === 11 && (
-                    <p className="text-xs text-amber-600">No se encontró la razón social automáticamente — puedes continuar igual, no afecta la conexión</p>
-                  )}
+                  {lookingUpRuc && <p className="text-xs text-blue-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando razón social...</p>}
+                  {razonSocial && !lookingUpRuc && <p className="text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {razonSocial}</p>}
                 </div>
+
+                {/* Client ID */}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">Client ID</label>
                   <Input
                     value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
+                    onChange={(e) => setClientId(e.target.value.trim())}
                     placeholder="Tu client_id de SUNAT"
                     required
                     disabled={saving}
                   />
-                  <p className="text-xs text-gray-400">
-                    Obtenido en: <a href="https://cpe.sunat.gob.pe" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">cpe.sunat.gob.pe</a> → Mis aplicaciones
-                  </p>
+                  <p className="text-xs text-gray-400">Obtenido en <a href="https://cpe.sunat.gob.pe" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">cpe.sunat.gob.pe</a> → Mis aplicaciones</p>
                 </div>
 
+                {/* Client Secret */}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">
                     Client Secret
@@ -316,15 +283,52 @@ export default function ConfiguracionPage() {
                       disabled={saving}
                       className="pr-10"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowSecret(!showSecret)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
+                    <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400">Se cifra con AES-256 antes de guardarse. Nunca se muestra completo.</p>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Credenciales SOL (usuario y clave SUNAT)</p>
+
+                  {/* Usuario SOL */}
+                  <div className="space-y-1.5 mb-4">
+                    <label className="text-sm font-medium text-gray-700">Usuario SOL</label>
+                    <Input
+                      value={usuarioSol}
+                      onChange={(e) => setUsuarioSol(e.target.value.trim().toUpperCase())}
+                      placeholder="Ej: MODDATOS o tu usuario SOL"
+                      required
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-gray-400">
+                      Solo el usuario, sin el RUC. El sistema lo concatena automáticamente. Ej: si tu usuario SOL es <code className="bg-gray-100 px-1 rounded">20610169849SHERMAN</code>, ingresa solo <code className="bg-gray-100 px-1 rounded">SHERMAN</code>
+                    </p>
+                  </div>
+
+                  {/* Clave SOL */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">
+                      Clave SOL
+                      {cred && <span className="ml-2 text-xs text-gray-400 font-normal">(dejar vacío para mantener la actual)</span>}
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type={showClave ? "text" : "password"}
+                        value={claveSol}
+                        onChange={(e) => setClaveSol(e.target.value)}
+                        placeholder={cred ? "••••••••••••••••" : "Tu clave SOL de SUNAT"}
+                        required={!cred}
+                        disabled={saving}
+                        className="pr-10"
+                      />
+                      <button type="button" onClick={() => setShowClave(!showClave)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        {showClave ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400">Se cifra con AES-256 antes de guardarse.</p>
+                  </div>
                 </div>
 
                 {saveMsg && (
@@ -342,13 +346,7 @@ export default function ConfiguracionPage() {
                     {saving ? "Guardando..." : "Guardar credenciales"}
                   </Button>
                   {cred && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleTest}
-                      disabled={testing || !companyId}
-                      className="gap-2"
-                    >
+                    <Button type="button" variant="outline" onClick={handleTest} disabled={testing || !companyId} className="gap-2">
                       {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
                       {testing ? "Probando..." : "Probar conexión"}
                     </Button>
@@ -359,7 +357,7 @@ export default function ConfiguracionPage() {
           </CardContent>
         </Card>
 
-        {/* Current status summary */}
+        {/* Status summary */}
         {cred && (
           <Card>
             <CardHeader className="pb-2">
@@ -367,7 +365,7 @@ export default function ConfiguracionPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">RUC configurado</span>
+                <span className="text-gray-600">RUC</span>
                 <Badge variant="success">{cred.ruc}</Badge>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -375,8 +373,8 @@ export default function ConfiguracionPage() {
                 <span className="text-xs font-mono text-gray-700">{cred.clientId.slice(0, 8)}…</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Client Secret</span>
-                <span className="text-xs text-gray-500">••••••••••••••••</span>
+                <span className="text-gray-600">Usuario SOL</span>
+                <span className="text-xs font-mono text-gray-700">{cred.ruc}{cred.usuarioSol}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Estado conexión</span>
@@ -400,6 +398,7 @@ export default function ConfiguracionPage() {
                   <li>Ve a &quot;Mis aplicaciones&quot; → &quot;Nueva aplicación&quot;</li>
                   <li>Selecciona el scope: <code className="bg-blue-100 px-1 rounded">https://api-cpe.sunat.gob.pe</code></li>
                   <li>Copia el <strong>client_id</strong> y <strong>client_secret</strong> generados</li>
+                  <li>El <strong>Usuario SOL</strong> y <strong>Clave SOL</strong> son los mismos que usas para ingresar a SUNAT</li>
                 </ol>
               </div>
             </div>
