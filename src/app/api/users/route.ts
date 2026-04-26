@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import prisma from "@/lib/db/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 const createSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -22,11 +23,13 @@ export async function GET(request: NextRequest) {
     const companyId = request.nextUrl.searchParams.get("companyId");
     const isSuperAdmin = session.companyRoles.some((r: { roleName: string }) => r.roleName === "SUPER_ADMIN");
 
-    const where = companyId
-      ? { userRoles: { some: { companyId, isActive: true } } }
-      : isSuperAdmin
-        ? {}
-        : { userRoles: { some: { companyId: { in: session.companyRoles.map((r: { companyId: string }) => r.companyId) }, isActive: true } } };
+    let where: Prisma.UserWhereInput = {};
+    if (companyId) {
+      where = { companyRoles: { some: { companyId, isActive: true } } };
+    } else if (!isSuperAdmin) {
+      const ids = session.companyRoles.map((r: { companyId: string }) => r.companyId);
+      where = { companyRoles: { some: { companyId: { in: ids }, isActive: true } } };
+    }
 
     const users = await prisma.user.findMany({
       where,
