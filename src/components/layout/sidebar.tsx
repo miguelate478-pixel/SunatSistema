@@ -22,6 +22,8 @@ import {
   Building2,
   LogOut,
   Check,
+  Users,
+  FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -60,6 +62,9 @@ const navItems: NavItem[] = [
 
 const bottomNavItems: NavItem[] = [
   { href: "/descargas", label: "Descargas SUNAT", icon: Download },
+  { href: "/sire", label: "SIRE (RCE/RVIE)", icon: FileText },
+  { href: "/admin/empresas", label: "Empresas", icon: Building2 },
+  { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/configuracion", label: "Configuración", icon: Settings },
 ];
 
