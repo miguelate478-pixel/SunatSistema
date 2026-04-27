@@ -282,21 +282,26 @@ export default function ComprasPage() {
                 </SelectContent>
               </Select>
               {/* Period filter */}
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  className="w-36 text-xs"
-                  placeholder="Desde"
-                  onChange={(e) => updateFilters({ fechaInicio: e.target.value || undefined })}
-                />
-                <span className="text-gray-400 text-xs">—</span>
-                <Input
-                  type="date"
-                  className="w-36 text-xs"
-                  placeholder="Hasta"
-                  onChange={(e) => updateFilters({ fechaFin: e.target.value || undefined })}
-                />
-              </div>
+              <select
+                className="text-xs border border-gray-200 rounded-lg px-2 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                defaultValue=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) { updateFilters({ fechaInicio: undefined, fechaFin: undefined }); return; }
+                  const [y, m] = val.split("-");
+                  const start = `${y}-${m}-01`;
+                  const end = new Date(Number(y), Number(m), 0).toISOString().split("T")[0];
+                  updateFilters({ fechaInicio: start, fechaFin: end });
+                }}
+              >
+                <option value="">Todos los períodos</option>
+                {Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+                  const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                  const label = d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
+                  return <option key={val} value={val}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>;
+                })}
+              </select>
               <div className="flex gap-2 ml-auto">
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
                   <RefreshCw className="w-3.5 h-3.5" />

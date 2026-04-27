@@ -1,41 +1,24 @@
 /**
- * Client-side export utilities
- * Generates Excel-compatible CSV and triggers browser download.
- * No server round-trip needed for simple exports.
+ * Client-side export utilities — generates real .xlsx files using SheetJS
  */
 
-export function downloadCSV(filename: string, rows: Record<string, unknown>[], headers?: Record<string, string>) {
+import * as XLSX from "xlsx";
+
+function downloadXLSX(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
 
-  const keys = Object.keys(rows[0]);
-  const headerRow = keys.map((k) => headers?.[k] ?? k).join(",");
+  // Auto-width columns
+  const colWidths = Object.keys(rows[0]).map((key) => ({
+    wch: Math.max(key.length, ...rows.slice(0, 200).map((r) => String(r[key] ?? "").length)) + 2,
+  }));
+  ws["!cols"] = colWidths;
 
-  const dataRows = rows.map((row) =>
-    keys.map((k) => {
-      const val = row[k];
-      if (val === null || val === undefined) return "";
-      const str = String(val);
-      // Escape quotes and wrap in quotes if contains comma, quote, or newline
-      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    }).join(",")
-  );
-
-  // BOM for Excel UTF-8 compatibility
-  const bom = "\uFEFF";
-  const content = bom + [headerRow, ...dataRows].join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  XLSX.utils.book_append_sheet(wb, ws, "Datos");
+  XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }
 
-// Voucher export helpers
 export function exportVouchers(vouchers: Record<string, unknown>[], filename: string) {
   const rows = vouchers.map((v) => ({
     Serie: v.serie,
@@ -48,9 +31,9 @@ export function exportVouchers(vouchers: Record<string, unknown>[], filename: st
     "RUC Receptor": v.rucReceptor,
     Receptor: v.razonSocialReceptor,
     Moneda: v.moneda,
-    Subtotal: v.subtotal,
-    IGV: v.igv,
-    Total: v.total,
+    Subtotal: Number(v.subtotal ?? 0),
+    IGV: Number(v.igv ?? 0),
+    Total: Number(v.total ?? 0),
     Estado: v.estado,
     XML: v.tieneXML ? "Sí" : "No",
     PDF: v.tienePDF ? "Sí" : "No",
@@ -60,7 +43,7 @@ export function exportVouchers(vouchers: Record<string, unknown>[], filename: st
     "Monto Detracción": v.montoDetraccion ?? "",
     "Estado Detracción": v.estadoDetraccion ?? "",
   }));
-  downloadCSV(filename, rows);
+  downloadXLSX(filename, rows);
 }
 
 export function exportDetracciones(detracciones: Record<string, unknown>[], filename: string) {
@@ -70,15 +53,15 @@ export function exportDetracciones(detracciones: Record<string, unknown>[], file
     "Fecha Emisión": d.fechaEmision ? String(d.fechaEmision).split("T")[0] : "",
     Proveedor: d.razonSocialEmisor,
     "RUC Proveedor": d.rucEmisor,
-    "Total Comprobante": d.total,
-    "% Detracción": d.porcentaje,
-    "Monto Detracción": d.monto,
-    "Neto a Pagar": Number(d.total) - Number(d.monto),
+    "Total Comprobante": Number(d.total ?? 0),
+    "% Detracción": Number(d.porcentaje ?? 0),
+    "Monto Detracción": Number(d.monto ?? 0),
+    "Neto a Pagar": Number(d.total ?? 0) - Number(d.monto ?? 0),
     Estado: d.estado,
     "Fecha Pago": d.fechaPago ?? "",
     "N° Constancia": d.numeroConstancia ?? "",
   }));
-  downloadCSV(filename, rows);
+  downloadXLSX(filename, rows);
 }
 
 export function exportCuentas(cuentas: Record<string, unknown>[], tipo: "cobrar" | "pagar", filename: string) {
@@ -87,13 +70,18 @@ export function exportCuentas(cuentas: Record<string, unknown>[], tipo: "cobrar"
     RUC: c.ruc,
     Documento: c.documento,
     Moneda: c.moneda,
-    Monto: c.monto,
-    "Monto Pagado": c.montoPagado ?? 0,
-    Saldo: c.saldo,
+    Monto: Number(c.monto ?? 0),
+    "Monto Pagado": Number(c.montoPagado ?? 0),
+    Saldo: Number(c.saldo ?? 0),
     "Fecha Emisión": c.fechaEmision ? String(c.fechaEmision).split("T")[0] : "",
     "Fecha Vencimiento": c.fechaVencimiento ? String(c.fechaVencimiento).split("T")[0] : "",
     "Días Vencimiento": c.diasVencimiento,
     Estado: c.estado,
   }));
-  downloadCSV(filename, rows);
+  downloadXLSX(filename, rows);
+}
+
+// Keep CSV for backward compat
+export function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
+  downloadXLSX(filename, rows);
 }
