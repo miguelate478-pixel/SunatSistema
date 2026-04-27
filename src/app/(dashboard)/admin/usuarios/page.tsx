@@ -154,7 +154,23 @@ export default function UsuariosPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      try {
+        const [usersRes, companiesRes] = await Promise.all([
+          fetch("/api/users"),
+          fetch("/api/companies"),
+        ]);
+        const [usersJson, companiesJson] = await Promise.all([usersRes.json(), companiesRes.json()]);
+        if (usersJson.success) setUsers(usersJson.data);
+        if (companiesJson.success) setCompanies(companiesJson.data);
+      } catch { /* silent */ } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
   async function handleCreate(data: Record<string, string>) {
     setSaving(true);

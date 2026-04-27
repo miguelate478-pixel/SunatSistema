@@ -92,7 +92,19 @@ export default function DescargasPage() {
     run();
   }, [companyId]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => {
+    const run = async () => {
+      if (!companyId) return;
+      try {
+        const res = await fetch(`/api/download-jobs?companyId=${companyId}`);
+        const json = await res.json();
+        if (json.success) setJobs(json.data);
+      } catch { /* silent */ } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, [companyId]);
 
   useEffect(() => {
     const hasActive = jobs.some((j) => j.estado === "PENDING" || j.estado === "PROCESSING");

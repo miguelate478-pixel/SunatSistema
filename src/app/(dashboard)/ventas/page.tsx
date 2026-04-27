@@ -127,11 +127,6 @@ export default function VentasPage() {
     } catch { /* silent */ } finally { setDownloadingZip(false); }
   }
 
-  function openDetail(comp: Voucher) {
-    setSelectedDoc(comp as VoucherDetail);
-    setDetailOpen(true);
-  }
-
   if (loading) {
     return <VentasSkeleton />;
   }

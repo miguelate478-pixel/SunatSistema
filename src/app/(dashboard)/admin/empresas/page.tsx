@@ -114,7 +114,19 @@ export default function EmpresasPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/companies");
+        const json = await res.json();
+        if (json.success) setCompanies(json.data);
+      } catch { /* silent */ } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
   async function handleCreate(data: Record<string, string>) {
     setSaving(true);

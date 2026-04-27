@@ -1,11 +1,10 @@
 /**
  * POST /api/vouchers/download-zip
- * Empaqueta los archivos XML/PDF/CDR disponibles de una lista de vouchers en un ZIP.
- *
+ * Packages available XML/PDF/CDR files for a list of vouchers into a ZIP.
  * Body: { companyId, voucherIds: string[], tipos?: ("XML"|"PDF"|"CDR")[] }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireCompanyAccess } from "@/lib/auth/session";
+import { requireAuth } from "@/lib/auth/session";
 import prisma from "@/lib/db/prisma";
 import { storage } from "@/lib/storage";
 import JSZip from "jszip";
@@ -19,19 +18,13 @@ const schema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAuth();
     const body = await request.json();
     const { companyId, voucherIds, tipos } = schema.parse(body);
 
-    await requireCompanyAccess(companyId);
-
-    // Load vouchers with their documents
     const vouchers = await prisma.voucher.findMany({
       where: { id: { in: voucherIds }, companyId, deletedAt: null },
-      include: {
-        documents: {
-          where: { tipo: { in: tipos } },
-        },
-      },
+      include: { documents: { where: { tipo: { in: tipos } } } },
     });
 
     if (vouchers.length === 0) {
@@ -44,14 +37,13 @@ export async function POST(request: NextRequest) {
 
     for (const voucher of vouchers) {
       const folderName = `${voucher.serie}-${voucher.numero}`;
-
       for (const doc of voucher.documents) {
         try {
           const content = await storage.get(doc.filepath);
           zip.file(`${folderName}/${doc.filename}`, content);
           filesAdded++;
         } catch {
-          errors.push(`${folderName}/${doc.filename}: no disponible en storage`);
+          errors.push(`${folderName}/${doc.filename}: no disponible`);
         }
       }
     }
@@ -59,20 +51,20 @@ export async function POST(request: NextRequest) {
     if (filesAdded === 0) {
       return NextResponse.json({
         success: false,
-        error: "No hay archivos disponibles para descargar. Los documentos deben estar descargados primero.",
+        error: "No hay archivos disponibles. Descarga los documentos primero desde Descargas SUNAT.",
       }, { status: 404 });
     }
 
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
     const filename = `comprobantes_${new Date().toISOString().split("T")[0]}.zip`;
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(zipBuffer as unknown as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "X-Files-Added": String(filesAdded),
-        "X-Errors": errors.length > 0 ? errors.slice(0, 5).join("; ") : "",
+        ...(errors.length > 0 ? { "X-Errors": errors.slice(0, 5).join("; ") } : {}),
       },
     });
   } catch (error) {

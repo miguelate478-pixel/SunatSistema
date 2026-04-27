@@ -184,7 +184,7 @@ export function parseVoucherXML(xmlContent: string): ParsedVoucher | null {
       extractTag(taxTotalBlock, "TaxAmount") ||
       extractTag(xml, "TaxAmount") || "0"
     );
-    let total = parseFloat(
+    const total = parseFloat(
       extractTag(legalMonetaryBlock, "PayableAmount") ||
       extractTag(xml, "PayableAmount") || "0"
     );

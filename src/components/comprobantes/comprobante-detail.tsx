@@ -152,9 +152,9 @@ export function ComprobanteDetail({ comprobante: initialData, open, onClose }: C
   // Load full detail with documents when opened
   useEffect(() => {
     if (!open || !initialData?.id) return;
-    setDetail(initialData);
 
     const loadFull = async () => {
+      setDetail(initialData);
       setLoadingDetail(true);
       try {
         const res = await fetch(`/api/vouchers/${initialData.id}`);
