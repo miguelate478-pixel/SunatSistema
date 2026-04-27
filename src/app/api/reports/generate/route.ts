@@ -9,7 +9,7 @@ import { z } from "zod";
 const generateSchema = z.object({
   companyId: z.string().uuid(),
   tipo: z.enum(["compras", "ventas", "detracciones", "alertas", "cuentas_cobrar", "cuentas_pagar", "flujo_caja", "resumen_ejecutivo"]),
-  formato: z.enum(["JSON", "CSV"]).default("JSON"),
+  formato: z.enum(["JSON", "CSV", "EXCEL"]).default("EXCEL"),
   fechaInicio: z.string().optional(),
   fechaFin: z.string().optional(),
 });
@@ -187,6 +187,23 @@ function toCSV(rows: Record<string, unknown>[]): string {
   return lines.join("\n");
 }
 
+// ── Excel helper ───────────────────────────────────────────────────────────────
+function toExcel(rows: Record<string, unknown>[], sheetName: string): Buffer {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require("xlsx");
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Auto-width columns
+  const colWidths = Object.keys(rows[0] ?? {}).map((key) => ({
+    wch: Math.max(key.length, ...rows.map((r) => String(r[key] ?? "").length).slice(0, 100)) + 2,
+  }));
+  ws["!cols"] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
@@ -240,17 +257,33 @@ export async function POST(request: NextRequest) {
     }
 
     const rows = Array.isArray(data) ? data : [data];
-    const content = params.formato === "CSV" ? toCSV(rows as Record<string, unknown>[]) : JSON.stringify(data, null, 2);
-    const filesize = Buffer.byteLength(content, "utf8");
-    const ext = params.formato === "CSV" ? "csv" : "json";
+    let content: string | Buffer;
+    let ext: string;
+    let mimeType: string;
+
+    if (params.formato === "EXCEL") {
+      content = toExcel(rows as Record<string, unknown>[], params.tipo);
+      ext = "xlsx";
+      mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    } else if (params.formato === "CSV") {
+      content = toCSV(rows as Record<string, unknown>[]);
+      ext = "csv";
+      mimeType = "text/csv";
+    } else {
+      content = JSON.stringify(data, null, 2);
+      ext = "json";
+      mimeType = "application/json";
+    }
+
+    const filesize = typeof content === "string" ? Buffer.byteLength(content, "utf8") : content.length;
     const filename = `${params.tipo}_${new Date().toISOString().split("T")[0]}.${ext}`;
 
     // Persist to storage
     const storageKey = storage.reportKey(params.companyId, execution.id, filename);
     await storage.upload({
       key: storageKey,
-      content,
-      mimeType: params.formato === "CSV" ? "text/csv" : "application/json",
+      content: typeof content === "string" ? content : content,
+      mimeType,
       metadata: { companyId: params.companyId, tipo: params.tipo, formato: params.formato },
     });
     const storageUrl = storage.url(storageKey);
@@ -279,7 +312,11 @@ export async function POST(request: NextRequest) {
         formato: params.formato,
         estado: "COMPLETED",
         filesize,
-        content,
+        // For Excel: send as base64 so JSON can carry binary
+        content: params.formato === "EXCEL"
+          ? (content as Buffer).toString("base64")
+          : content,
+        contentEncoding: params.formato === "EXCEL" ? "base64" : "utf8",
         rows: rows.length,
         generatedAt: new Date().toISOString(),
       },

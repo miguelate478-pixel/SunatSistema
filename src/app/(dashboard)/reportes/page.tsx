@@ -43,9 +43,19 @@ function formatBytes(bytes: number | null) {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-function downloadContent(content: string, filename: string, formato: string) {
-  const mime = formato === "CSV" ? "text/csv" : "application/json";
-  const blob = new Blob([content], { type: mime });
+function downloadContent(content: string, filename: string, formato: string, contentEncoding?: string) {
+  let blob: Blob;
+  if (formato === "EXCEL" || contentEncoding === "base64") {
+    // Decode base64 to binary
+    const binary = atob(content);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  } else if (formato === "CSV") {
+    blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  } else {
+    blob = new Blob([content], { type: "application/json" });
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -59,7 +69,7 @@ export default function ReportesPage() {
   const [history, setHistory] = useState<ReportExecution[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
-  const [formato, setFormato] = useState<"JSON" | "CSV">("CSV");
+  const [formato, setFormato] = useState<"JSON" | "CSV" | "EXCEL">("EXCEL");
 
   const companyId = session?.companyRoles[0]?.companyId;
 
@@ -91,8 +101,13 @@ export default function ReportesPage() {
       if (!json.success) throw new Error(json.error);
 
       // Auto-download
-      const ext = formato === "CSV" ? "csv" : "json";
-      downloadContent(json.data.content, `${tipo}_${new Date().toISOString().split("T")[0]}.${ext}`, formato);
+      const ext = formato === "EXCEL" ? "xlsx" : formato === "CSV" ? "csv" : "json";
+      downloadContent(
+        json.data.content,
+        `${tipo}_${new Date().toISOString().split("T")[0]}.${ext}`,
+        formato,
+        json.data.contentEncoding
+      );
 
       // Refresh history
       const histRes = await fetch(`/api/reports?companyId=${companyId}`);
@@ -126,13 +141,13 @@ export default function ReportesPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-blue-700 font-medium">Formato:</span>
                 <div className="flex rounded-lg border border-blue-300 overflow-hidden">
-                  {(["CSV", "JSON"] as const).map((f) => (
+                  {(["EXCEL", "CSV", "JSON"] as const).map((f) => (
                     <button
                       key={f}
                       onClick={() => setFormato(f)}
                       className={`px-3 py-1.5 text-xs font-semibold transition-colors ${formato === f ? "bg-blue-600 text-white" : "bg-white text-blue-700 hover:bg-blue-50"}`}
                     >
-                      {f}
+                      {f === "EXCEL" ? "Excel" : f}
                     </button>
                   ))}
                 </div>
@@ -169,7 +184,7 @@ export default function ReportesPage() {
                     {isGenerating ? (
                       <><Loader2 className="w-3.5 h-3.5 animate-spin" />Generando...</>
                     ) : (
-                      <><Download className="w-3.5 h-3.5" />Generar {formato}</>
+                      <><Download className="w-3.5 h-3.5" />Generar {formato === "EXCEL" ? "Excel" : formato}</>
                     )}
                   </Button>
                 </CardContent>
