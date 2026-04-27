@@ -123,9 +123,9 @@ export async function discoverDocuments(params: DiscoveryParams): Promise<Discov
           numero: doc.numero,
           fechaEmision,
           rucEmisor: doc.rucEmisor,
-          razonSocialEmisor: isVenta ? company.razonSocial : doc.rucEmisor, // will be enriched later
-          rucReceptor: isVenta ? ruc : company.ruc,
-          razonSocialReceptor: isVenta ? ruc : company.razonSocial,
+          razonSocialEmisor: isVenta ? company.razonSocial : (doc.razonSocialEmisor ?? doc.rucEmisor),
+          rucReceptor: isVenta ? (doc.rucReceptor ?? ruc) : company.ruc,
+          razonSocialReceptor: isVenta ? (doc.razonSocialReceptor ?? ruc) : company.razonSocial,
           moneda: "PEN",
           subtotal: 0,
           igv: 0,

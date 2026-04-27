@@ -18,7 +18,12 @@ export interface SunatDocument {
   numero: string;
   tipo: string;
   rucEmisor: string;
+  razonSocialEmisor?: string;  // optional — enriched when available
+  rucReceptor?: string;
+  razonSocialReceptor?: string;
   fechaEmision: string;
+  moneda?: string;
+  total?: number;
 }
 
 export interface DownloadResult {

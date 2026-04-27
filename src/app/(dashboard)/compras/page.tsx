@@ -94,6 +94,8 @@ export default function ComprasPage() {
   const [importarOpen, setImportarOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const filtered = vouchers; // Filtering is done server-side via API params
 
@@ -124,6 +126,34 @@ export default function ComprasPage() {
 
   function handleExport() {
     exportVouchers(vouchers as unknown as Record<string, unknown>[], `compras_${new Date().toISOString().split("T")[0]}.csv`);
+  }
+
+  async function handleSync() {
+    if (!activeCompany || syncing) return;
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const now = new Date();
+      const fechaInicio = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const fechaFin = now.toISOString().split("T")[0];
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: activeCompany.id, fechaInicio, fechaFin, downloadFiles: true }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        const n = json.data?.docsNuevos ?? 0;
+        setSyncMsg(n > 0 ? `✓ ${n} comprobantes nuevos sincronizados` : "✓ Sin comprobantes nuevos");
+        refetch();
+      } else {
+        setSyncMsg(`Error: ${json.error}`);
+      }
+    } catch {
+      setSyncMsg("Error de conexión al sincronizar");
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function handleDownloadZip() {
@@ -204,6 +234,13 @@ export default function ComprasPage() {
           </div>
         </div>
 
+        {/* Sync message */}
+        {syncMsg && (
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm ${syncMsg.startsWith("✓") ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-700"}`}>
+            {syncMsg}
+          </div>
+        )}
+
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
@@ -264,6 +301,10 @@ export default function ComprasPage() {
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
                   <RefreshCw className="w-3.5 h-3.5" />
                   Actualizar
+                </Button>
+                <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={handleSync} disabled={syncing || !activeCompany}>
+                  {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {syncing ? "Sincronizando..." : "Sincronizar SUNAT"}
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => setImportarOpen(true)}>
                   <Upload className="w-3.5 h-3.5" />
