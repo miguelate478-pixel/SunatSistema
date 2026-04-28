@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --legacy-peer-deps && npx prisma generate && npm run build && chmod +x scripts/start.sh"
+buildCommand = "npx prisma generate && npm run build"
 
 [build.nixpacksPlan.phases.setup]
 nixPkgs = ["nodejs_20"]
