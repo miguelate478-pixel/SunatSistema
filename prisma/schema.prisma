@@ -37,9 +37,9 @@ model User {
 
 model Role {
   id          String   @id @default(uuid())
-  name        String   @unique // SUPER_ADMIN, ADMIN_EMPRESA, CONTABILIDAD, TESORERIA, GERENCIA, AUDITOR
+  name        String   @unique
   description String?
-  permissions Json     // Array de permisos
+  permissions Json
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -64,50 +64,12 @@ model UserCompanyRole {
   role    Role    @relation(fields: [roleId], references: [id])
 
   @@unique([userId, companyId, roleId])
-  @@index([userId])
-  @@index([companyId])
-  @@index([roleId])
   @@map("user_company_roles")
 }
 
 // ============================================================
 // COMPANY & ENTITIES
 // ============================================================
-
-model Company {
-  id              String   @id @default(uuid())
-  ruc             String   @unique
-  razonSocial     String
-  nombreComercial String?
-  direccion       String?
-  telefono        String?
-  email           String?
-  logo            String?
-  sector          String
-  plan            String   @default("PROFESSIONAL") // STARTER, PROFESSIONAL, ENTERPRISE
-  isActive        Boolean  @default(true)
-  createdById     String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  createdBy         User                @relation("CompanyCreator", fields: [createdById], references: [id])
-  userRoles         UserCompanyRole[]
-  suppliers         Supplier[]
-  customers         Customer[]
-  vouchers          Voucher[]
-  alerts            Alert[]
-  accountsReceivable AccountReceivable[]
-  accountsPayable   AccountPayable[]
-  reportExecutions  ReportExecution[]
-  auditLogs         AuditLog[]
-  sunatCredential   SunatCredential?
-  syncExecutions    SyncExecution[]
-
-  @@index([ruc])
-  @@index([createdById])
-  @@map("companies")
-}
 
 model Supplier {
   id            String   @id @default(uuid())
@@ -157,6 +119,42 @@ model Customer {
   @@map("customers")
 }
 
+model Company {
+  id              String   @id @default(uuid())
+  ruc             String   @unique
+  razonSocial     String
+  nombreComercial String?
+  direccion       String?
+  telefono        String?
+  email           String?
+  logo            String?
+  sector          String
+  plan            String   @default("PROFESSIONAL")
+  isActive        Boolean  @default(true)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  createdBy         User                @relation("CompanyCreator", fields: [createdById], references: [id])
+  userRoles         UserCompanyRole[]
+  suppliers         Supplier[]
+  customers         Customer[]
+  vouchers          Voucher[]
+  alerts            Alert[]
+  accountsReceivable AccountReceivable[]
+  accountsPayable   AccountPayable[]
+  reportExecutions  ReportExecution[]
+  auditLogs         AuditLog[]
+  sunatCredential   SunatCredential?
+  syncExecutions    SyncExecution[]
+  downloadJobs      DownloadJob[]
+
+  @@index([ruc])
+  @@index([createdById])
+  @@map("companies")
+}
+
 // ============================================================
 // VOUCHERS (COMPROBANTES)
 // ============================================================
@@ -164,7 +162,8 @@ model Customer {
 model Voucher {
   id                   String    @id @default(uuid())
   companyId            String
-  tipo                 String    // FACTURA, BOLETA, NOTA_CREDITO, NOTA_DEBITO, RECIBO
+  downloadJobId        String?   // ← Referencia rápida al ÚLTIMO job
+  tipo                 String
   serie                String
   numero               String
   fechaEmision         DateTime
@@ -173,45 +172,50 @@ model Voucher {
   razonSocialEmisor    String
   rucReceptor          String
   razonSocialReceptor  String
-  moneda               String    @default("PEN") // PEN, USD
+  moneda               String    @default("PEN")
   subtotal             Decimal   @db.Decimal(12, 2)
   igv                  Decimal   @db.Decimal(12, 2)
   total                Decimal   @db.Decimal(12, 2)
-  estado               String    @default("PENDIENTE") // ACEPTADO, RECHAZADO, PENDIENTE, ANULADO, OBSERVADO
+  estado               String    @default("PENDIENTE")
   tieneXML             Boolean   @default(false)
   tienePDF             Boolean   @default(false)
   tieneCDR             Boolean   @default(false)
   afectoDetraccion     Boolean   @default(false)
   porcentajeDetraccion Decimal?  @db.Decimal(5, 2)
   montoDetraccion      Decimal?  @db.Decimal(12, 2)
-  estadoDetraccion     String?   // PAGADO, PENDIENTE, VENCIDO
+  estadoDetraccion     String?
+  direccion            String?
   observaciones        String?   @db.Text
-  metadata             Json?     // Datos adicionales
+  metadata             Json?
   supplierId           String?
   customerId           String?
-  createdById          String
+  createdById          String?   // ← Nullable
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  deletedAt            DateTime? // Soft delete
+  deletedAt            DateTime?
 
   // Relations
-  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  supplier           Supplier?           @relation("SupplierVouchers", fields: [supplierId], references: [id])
-  customer           Customer?           @relation("CustomerVouchers", fields: [customerId], references: [id])
-  createdBy          User                @relation("VoucherCreator", fields: [createdById], references: [id])
+  company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lastDownloadJob    DownloadJob?          @relation("VoucherLastJob", fields: [downloadJobId], references: [id], onDelete: SetNull)
+  supplier           Supplier?             @relation("SupplierVouchers", fields: [supplierId], references: [id])
+  customer           Customer?             @relation("CustomerVouchers", fields: [customerId], references: [id])
+  createdBy          User?                 @relation("VoucherCreator", fields: [createdById], references: [id])
   items              VoucherItem[]
   documents          VoucherDocument[]
   detraction         Detraction?
   accountReceivable  AccountReceivable?
   accountPayable     AccountPayable?
+  downloadJobHistory DownloadJobVoucher[]  // ← Historial completo N:M
 
-  @@unique([companyId, serie, numero])
+  @@unique([companyId, tipo, serie, numero])
   @@index([companyId])
+  @@index([downloadJobId])
   @@index([serie, numero])
   @@index([fechaEmision])
   @@index([rucEmisor])
   @@index([rucReceptor])
   @@index([estado])
+  @@index([direccion])
   @@index([supplierId])
   @@index([customerId])
   @@index([deletedAt])
@@ -241,19 +245,24 @@ model VoucherItem {
 model VoucherDocument {
   id           String   @id @default(uuid())
   voucherId    String
-  tipo         String   // XML, PDF, CDR
+  downloadJobId String? // ← Referencia rápida al ÚLTIMO job
+  tipo         String
   filename     String
   filepath     String
   filesize     Int
   mimeType     String
-  storageUrl   String?  // URL en S3 o storage
+  storageUrl   String?
   uploadedAt   DateTime @default(now())
   metadata     Json?
 
   // Relations
-  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucher            Voucher                 @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  lastDownloadJob    DownloadJob?            @relation("DocumentLastJob", fields: [downloadJobId], references: [id], onDelete: SetNull)
+  downloadJobHistory DownloadJobDocument[]   // ← Historial completo N:M
 
+  @@unique([voucherId, tipo])  // ← Constraint única para upsert
   @@index([voucherId])
+  @@index([downloadJobId])
   @@index([tipo])
   @@map("voucher_documents")
 }
@@ -267,7 +276,7 @@ model Detraction {
   voucherId         String    @unique
   porcentaje        Decimal   @db.Decimal(5, 2)
   monto             Decimal   @db.Decimal(12, 2)
-  estado            String    @default("PENDIENTE") // PAGADO, PENDIENTE, VENCIDO
+  estado            String    @default("PENDIENTE")
   fechaPago         DateTime?
   numeroConstancia  String?
   observaciones     String?   @db.Text
@@ -299,7 +308,7 @@ model AccountReceivable {
   fechaEmision     DateTime
   fechaVencimiento DateTime
   diasVencimiento  Int
-  estado           String    @default("VIGENTE") // VIGENTE, VENCIDO, VENCE_HOY, PAGADO
+  estado           String    @default("VIGENTE")
   montoPagado      Decimal   @default(0) @db.Decimal(12, 2)
   saldo            Decimal   @db.Decimal(12, 2)
   observaciones    String?   @db.Text
@@ -329,7 +338,7 @@ model AccountPayable {
   fechaEmision     DateTime
   fechaVencimiento DateTime
   diasVencimiento  Int
-  estado           String    @default("VIGENTE") // VIGENTE, VENCIDO, PAGADO
+  estado           String    @default("VIGENTE")
   montoPagado      Decimal   @default(0) @db.Decimal(12, 2)
   saldo            Decimal   @db.Decimal(12, 2)
   observaciones    String?   @db.Text
@@ -353,8 +362,8 @@ model AccountPayable {
 model Alert {
   id          String    @id @default(uuid())
   companyId   String
-  tipo        String    // ERROR, WARNING, INFO, SUCCESS
-  categoria   String    // DOCUMENTOS, DETRACCIONES, IMPUESTOS, CUENTAS, SUNAT, INCONSISTENCIAS
+  tipo        String
+  categoria   String
   titulo      String
   descripcion String    @db.Text
   accion      String?
@@ -363,7 +372,7 @@ model Alert {
   createdById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime? // Soft delete
+  deletedAt   DateTime?
 
   // Relations
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -385,10 +394,10 @@ model Alert {
 model ReportExecution {
   id          String   @id @default(uuid())
   companyId   String
-  tipo        String   // compras, ventas, detracciones, impuestos, etc.
-  formato     String   // Excel, PDF, TXT
+  tipo        String
+  formato     String
   parametros  Json
-  estado      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  estado      String   @default("PENDING")
   filepath    String?
   filesize    Int?
   storageUrl  String?
@@ -414,10 +423,10 @@ model SunatCredential {
   id                  String    @id @default(uuid())
   companyId           String    @unique
   ruc                 String
-  clientId            String    // SUNAT OAuth client_id
-  clientSecretEnc     String    @db.Text // AES-256 encrypted
-  usuarioSol          String    @default("") // RUC+usuario SOL, e.g. "MODDATOS"
-  claveSolEnc         String    @default("") @db.Text // AES-256 encrypted clave SOL
+  clientId            String
+  clientSecret        String    @db.Text
+  usuario             String    @default("")
+  claveSol            String    @default("") @db.Text
   isActive            Boolean   @default(true)
   lastTestedAt        DateTime?
   lastTestOk          Boolean?
@@ -437,45 +446,51 @@ model SunatCredential {
 // ============================================================
 
 model DownloadJob {
-  id          String    @id @default(uuid())
-  companyId   String
-  tipo        String    // XML, PDF, CDR, MASIVO
-  parametros  Json      // { serie, numero, fechaInicio, fechaFin, etc }
-  estado      String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
-  progreso    Int       @default(0) // 0-100
-  totalDocs   Int       @default(0)
-  docsOk      Int       @default(0)
-  docsError   Int       @default(0)
-  errorMsg    String?   @db.Text
-  metadata    Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
+  id            String    @id @default(uuid())
+  companyId     String
+  numTicket     String
+  tipo          String
+  periodo       String
+  status        String    @default("PENDING")
+  progress      Int       @default(0)
+  errorMessage  String?   @db.Text
+  resultData    Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  // Relations
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vouchersLastJob      Voucher[]             @relation("VoucherLastJob")      // ← Vouchers que tienen este job como último
+  documentsLastJob     VoucherDocument[]     @relation("DocumentLastJob")     // ← Documentos que tienen este job como último
+  voucherHistory       DownloadJobVoucher[]  // ← Historial completo N:M
+  documentHistory      DownloadJobDocument[] // ← Historial completo N:M
 
   @@index([companyId])
-  @@index([estado])
+  @@index([status])
+  @@index([numTicket])
   @@index([createdAt])
   @@map("download_jobs")
 }
 
 // ============================================================
-// SYNC EXECUTIONS (automatic & manual sync tracking)
+// SYNC EXECUTIONS
 // ============================================================
 
 model SyncExecution {
   id           String    @id @default(uuid())
   companyId    String
-  tipo         String    @default("DIARIA") // DIARIA, MANUAL, REINTENTO
-  estado       String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
-  periodo      String?   // "2024-04" — mes/año sincronizado
-  fechaInicio  String?   // "2024-04-01"
-  fechaFin     String?   // "2024-04-30"
-  docsNuevos   Int       @default(0) // comprobantes descubiertos nuevos
+  tipo         String    @default("DIARIA")
+  estado       String    @default("PENDING")
+  periodo      String?
+  fechaInicio  String?
+  fechaFin     String?
+  docsNuevos   Int       @default(0)
   docsOk       Int       @default(0)
   docsError    Int       @default(0)
   errorMsg     String?   @db.Text
-  duracionMs   Int?      // duración en milisegundos
-  triggeredBy  String?   // userId o "cron"
+  duracionMs   Int?
+  triggeredBy  String?
   startedAt    DateTime  @default(now())
   completedAt  DateTime?
 
@@ -490,6 +505,46 @@ model SyncExecution {
 }
 
 // ============================================================
+// DOWNLOAD JOB BRIDGE TABLES (Auditoría e Historial)
+// ============================================================
+
+model DownloadJobVoucher {
+  id            String      @id @default(uuid())
+  downloadJobId String
+  voucherId     String
+  wasNew        Boolean     @default(false)  // ¿Era nuevo o ya existía?
+  dataChanged   Boolean     @default(false)  // ¿Cambió algún dato entre descargas?
+  createdAt     DateTime    @default(now())
+
+  // Relations
+  downloadJob DownloadJob @relation(fields: [downloadJobId], references: [id], onDelete: Cascade)
+  voucher     Voucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@unique([downloadJobId, voucherId])  // Un voucher solo una vez por job
+  @@index([downloadJobId])
+  @@index([voucherId])
+  @@index([createdAt])
+  @@index([wasNew])
+  @@map("download_job_vouchers")
+}
+
+model DownloadJobDocument {
+  id                String          @id @default(uuid())
+  downloadJobId     String
+  voucherDocumentId String
+  createdAt         DateTime        @default(now())
+
+  // Relations
+  downloadJob     DownloadJob     @relation(fields: [downloadJobId], references: [id], onDelete: Cascade)
+  voucherDocument VoucherDocument @relation(fields: [voucherDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([downloadJobId, voucherDocumentId])
+  @@index([downloadJobId])
+  @@index([voucherDocumentId])
+  @@map("download_job_documents")
+}
+
+// ============================================================
 // AUDIT LOG
 // ============================================================
 
@@ -497,10 +552,10 @@ model AuditLog {
   id         String   @id @default(uuid())
   companyId  String?
   userId     String
-  action     String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, DOWNLOAD, etc.
-  entity     String   // User, Voucher, Company, etc.
+  action     String
+  entity     String
   entityId   String?
-  changes    Json?    // Cambios realizados
+  changes    Json?
   ipAddress  String?
   userAgent  String?  @db.Text
   metadata   Json?

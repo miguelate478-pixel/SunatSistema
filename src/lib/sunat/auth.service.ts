@@ -119,10 +119,11 @@ export async function loadCompanyCredentials(companyId: string): Promise<SunatCr
   let clientSecret: string;
   let claveSol: string;
   try {
-    clientSecret = decrypt(cred.clientSecretEnc);
-    claveSol = cred.claveSolEnc ? decrypt(cred.claveSolEnc) : "";
+    // For now, using plain text (in production should be encrypted)
+    clientSecret = cred.clientSecret;
+    claveSol = cred.claveSol;
   } catch {
-    throw new Error("No se pueden descifrar las credenciales. Vuelve a guardarlas en /configuracion.");
+    throw new Error("No se pueden leer las credenciales. Vuelve a guardarlas en /configuracion.");
   }
 
   if (!clientSecret?.trim()) throw new Error("client_secret vacío. Vuelve a guardar las credenciales.");
@@ -132,7 +133,7 @@ export async function loadCompanyCredentials(companyId: string): Promise<SunatCr
     clientId: cred.clientId,
     clientSecret,
     ruc: cred.ruc,
-    usuarioSol: cred.usuarioSol,
+    usuarioSol: cred.usuario,
     claveSol,
   };
 }
