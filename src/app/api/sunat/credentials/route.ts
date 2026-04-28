@@ -7,9 +7,9 @@ const saveCredentialsSchema = z.object({
   companyId: z.string().uuid(),
   ruc: z.string().length(11),
   usuario: z.string().min(1),
-  claveSol: z.string().min(1),
+  claveSol: z.string().optional().default(""),
   clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
+  clientSecret: z.string().optional().default(""),
 });
 
 export async function POST(req: NextRequest) {
@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Build update data — only overwrite secrets if provided
+    const updateData: Record<string, unknown> = { ruc, usuario, clientId, isActive: true };
+    if (clientSecret) updateData.clientSecret = clientSecret;
+    if (claveSol) updateData.claveSol = claveSol;
+
     // Upsert credentials
     await prisma.sunatCredential.upsert({
       where: { companyId },
@@ -49,19 +54,12 @@ export async function POST(req: NextRequest) {
         companyId,
         ruc,
         usuario,
-        claveSol,
+        claveSol: claveSol || "",
         clientId,
-        clientSecret,
+        clientSecret: clientSecret || "",
         isActive: true,
       },
-      update: {
-        ruc,
-        usuario,
-        claveSol,
-        clientId,
-        clientSecret,
-        isActive: true,
-      },
+      update: updateData,
     });
 
     return NextResponse.json({
@@ -122,7 +120,7 @@ export async function GET(req: NextRequest) {
       data: {
         id: credentials.id,
         ruc: credentials.ruc,
-        usuario: credentials.usuario,
+        usuarioSol: credentials.usuario,
         clientId: credentials.clientId,
         isActive: credentials.isActive,
         lastTestedAt: credentials.lastTestedAt,

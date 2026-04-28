@@ -105,7 +105,7 @@ export default function ConfiguracionPage() {
       const res = await fetch("/api/sunat/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, ruc, clientId, clientSecret, usuarioSol, claveSol }),
+        body: JSON.stringify({ companyId, ruc, clientId, clientSecret, usuario: usuarioSol, claveSol }),
       });
       const json = await res.json();
       if (json.success) {
