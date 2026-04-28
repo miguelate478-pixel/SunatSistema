@@ -16,10 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: "No autenticado" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -33,43 +30,48 @@ export async function POST(req: NextRequest) {
 
     const { companyId, ruc, usuario, claveSol, clientId, clientSecret } = validation.data;
 
-    // Verify user has access to this company
     const hasAccess = session.companyRoles.some((cr) => cr.company.id === companyId);
     if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "No tienes acceso a esta empresa" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "No tienes acceso a esta empresa" }, { status: 403 });
     }
 
-    // Build update data — only overwrite secrets if provided
-    const updateData: Record<string, unknown> = { ruc, usuario, clientId, isActive: true };
-    if (clientSecret) updateData.clientSecret = clientSecret;
-    if (claveSol) updateData.claveSol = claveSol;
+    // Check if credentials already exist
+    const existing = await prisma.sunatCredential.findUnique({ where: { companyId } });
 
-    // Upsert credentials
-    await prisma.sunatCredential.upsert({
-      where: { companyId },
-      create: {
-        companyId,
-        ruc,
-        usuario,
-        claveSol: claveSol || "",
-        clientId,
-        clientSecret: clientSecret || "",
-        isActive: true,
-      },
-      update: updateData,
-    });
+    if (existing) {
+      // Update — only overwrite secrets if provided
+      await prisma.sunatCredential.update({
+        where: { companyId },
+        data: {
+          ruc,
+          usuario,
+          clientId,
+          isActive: true,
+          ...(clientSecret ? { clientSecret } : {}),
+          ...(claveSol ? { claveSol } : {}),
+        },
+      });
+    } else {
+      // Create — require secrets on first save
+      await prisma.sunatCredential.create({
+        data: {
+          companyId,
+          ruc,
+          usuario,
+          clientId,
+          clientSecret: clientSecret || "",
+          claveSol: claveSol || "",
+          isActive: true,
+        },
+      });
+    }
 
-    return NextResponse.json({
-      success: true,
-      message: "Credenciales guardadas correctamente",
-    });
+    return NextResponse.json({ success: true, message: "Credenciales guardadas correctamente" });
   } catch (error) {
-    console.error("Error saving credentials:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Error saving credentials:", msg);
     return NextResponse.json(
-      { success: false, error: "Error al guardar credenciales" },
+      { success: false, error: `Error al guardar credenciales: ${msg}` },
       { status: 500 }
     );
   }
@@ -79,40 +81,23 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: "No autenticado" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const companyId = searchParams.get("companyId");
-
+    const companyId = new URL(req.url).searchParams.get("companyId");
     if (!companyId) {
-      return NextResponse.json(
-        { success: false, error: "companyId requerido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "companyId requerido" }, { status: 400 });
     }
 
-    // Verify user has access to this company
     const hasAccess = session.companyRoles.some((cr) => cr.company.id === companyId);
     if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "No tienes acceso a esta empresa" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "No tienes acceso a esta empresa" }, { status: 403 });
     }
 
-    const credentials = await prisma.sunatCredential.findUnique({
-      where: { companyId },
-    });
+    const credentials = await prisma.sunatCredential.findUnique({ where: { companyId } });
 
     if (!credentials) {
-      return NextResponse.json({
-        success: true,
-        data: null,
-      });
+      return NextResponse.json({ success: true, data: null });
     }
 
     return NextResponse.json({
@@ -130,10 +115,8 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error getting credentials:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al obtener credenciales" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Error getting credentials:", msg);
+    return NextResponse.json({ success: false, error: "Error al obtener credenciales" }, { status: 500 });
   }
 }
