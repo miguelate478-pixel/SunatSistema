@@ -84,11 +84,27 @@ export default function DescargasPage() {
     loadJobs();
   }, [companyId, loadJobs]);
 
-  // Auto-refresh while jobs are running
+  // Auto-refresh while jobs are running — calls process-job to advance them
   useEffect(() => {
     const hasActive = jobs.some((j) => j.status === "PENDING" || j.status === "RUNNING");
     if (!hasActive) return;
-    const interval = setInterval(loadJobs, 3000);
+
+    const interval = setInterval(async () => {
+      // Process each active job
+      const activeJobs = jobs.filter((j) => j.status === "PENDING" || j.status === "RUNNING");
+      await Promise.all(
+        activeJobs.map((job) =>
+          fetch("/api/sunat/process-job", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId: job.id }),
+          }).catch(() => {})
+        )
+      );
+      // Refresh job list
+      await loadJobs();
+    }, 4000);
+
     return () => clearInterval(interval);
   }, [jobs, loadJobs]);
 
