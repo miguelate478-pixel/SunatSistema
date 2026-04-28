@@ -1,49 +1,72 @@
 /**
  * Parser de archivos SIRE (formato PLE/TXT)
- * 
+ *
  * SUNAT devuelve ZIPs con archivos TXT en formato pipe-delimited.
- * 
- * Formato RCE (Registro de Compras) - Estructura 8.1:
- * Campo 1: Período (YYYYMM)
- * Campo 2: CUO (Código Único de Operación)
- * Campo 3: Número correlativo
- * Campo 4: Fecha emisión (DD/MM/YYYY)
- * Campo 5: Fecha vencimiento
- * Campo 6: Tipo comprobante (01=Factura, 03=Boleta, etc.)
- * Campo 7: Serie
- * Campo 8: Año DUA
- * Campo 9: Número
- * Campo 10: Tipo doc identidad proveedor (6=RUC)
- * Campo 11: RUC proveedor
- * Campo 12: Razón social proveedor
- * Campo 13: Base imponible gravada
- * Campo 14: IGV
- * Campo 15: Base imponible inafecta
- * Campo 16: Base imponible exonerada
- * Campo 17: ISC
- * Campo 18: Base imponible IVAP
- * Campo 19: IVAP
- * Campo 20: ICBPER
- * Campo 21: Otros tributos
- * Campo 22: Total comprobante
- * Campo 23: Moneda
- * Campo 24: Tipo de cambio
- * Campo 25: Fecha emisión doc referencia
- * Campo 26: Tipo doc referencia
- * Campo 27: Serie doc referencia
- * Campo 28: Número doc referencia
- * Campo 29: Código detracción
- * Campo 30: Número constancia detracción
- * Campo 31: Fecha pago detracción
- * Campo 32: Tipo comprobante retencion
- * Campo 33: Serie comprobante retencion
- * Campo 34: Número comprobante retencion
- * Campo 35: Marca comprobante sujeto retención
- * Campo 36: Clasificación bienes y servicios
- * Campo 37: Identificación contrato
- * Campo 38: Error tipo 1
- * Campo 39: Indicador comprobante cancelado
- * Campo 40: Estado
+ *
+ * Formato RCE (Registro de Compras) - Estructura 8.1 PLE:
+ * [0]  Período tributario          YYYYMM
+ * [1]  CUO
+ * [2]  Número correlativo
+ * [3]  Fecha emisión               DD/MM/YYYY
+ * [4]  Fecha vencimiento           DD/MM/YYYY
+ * [5]  Tipo comprobante            01=Factura, 03=Boleta, 07=NC, 08=ND
+ * [6]  Serie                       F001, B001, etc.
+ * [7]  Año DUA/DSI                 (vacío si no aplica)
+ * [8]  Número                      número del comprobante
+ * [9]  Tipo doc identidad emisor   6=RUC
+ * [10] RUC emisor (proveedor)
+ * [11] Razón social emisor
+ * [12] Base imponible gravada
+ * [13] IGV
+ * [14] Base imponible inafecta
+ * [15] Base imponible exonerada
+ * [16] ISC
+ * [17] Base imponible IVAP
+ * [18] IVAP
+ * [19] ICBPER
+ * [20] Otros tributos
+ * [21] Total comprobante
+ * [22] Moneda
+ * [23] Tipo de cambio
+ * [24] Fecha emisión doc referencia
+ * [25] Tipo doc referencia
+ * [26] Serie doc referencia
+ * [27] Número doc referencia
+ * [28] Código detracción
+ * [29] Número constancia detracción
+ * [30] Fecha pago detracción
+ * [31-37] Otros campos
+ * [38] Indicador comprobante cancelado
+ * [39] Estado (1=válido, 8=anulado)
+ *
+ * Formato RVIE (Registro de Ventas) - Estructura 14.1 PLE:
+ * [0]  Período tributario
+ * [1]  CUO
+ * [2]  Número correlativo
+ * [3]  Fecha emisión
+ * [4]  Fecha vencimiento
+ * [5]  Tipo comprobante
+ * [6]  Serie
+ * [7]  Número
+ * [8]  Tipo doc identidad receptor  6=RUC, 1=DNI
+ * [9]  RUC/DNI receptor (cliente)
+ * [10] Razón social receptor
+ * [11] Valor facturado exportación
+ * [12] Base imponible gravada
+ * [13] Descuento base imponible
+ * [14] IGV
+ * [15] Descuento IGV
+ * [16] Base imponible inafecta
+ * [17] Base imponible exonerada
+ * [18] ISC
+ * [19] Base imponible IVAP
+ * [20] IVAP
+ * [21] ICBPER
+ * [22] Otros tributos
+ * [23] Total comprobante
+ * [24] Moneda
+ * [25] Tipo de cambio
+ * [26-] Otros campos
  */
 
 import AdmZip from "adm-zip";
@@ -61,7 +84,6 @@ export interface SireComprobanteData {
   importeTotal?: string;
   moneda?: string;
   estado?: string;
-  // Detracción
   codigoDetraccion?: string;
   numeroConstanciaDetraccion?: string;
   fechaPagoDetraccion?: string;
@@ -77,39 +99,58 @@ export async function parseSireFromZipBuffer(
     const zip = new AdmZip(zipBuffer);
     const entries = zip.getEntries();
 
-    console.log(`[SIRE Parser] ZIP entries: ${entries.map(e => e.entryName).join(", ")}`);
+    console.log(`[SIRE Parser] ZIP entries (${entries.length}): ${entries.map(e => e.entryName).join(", ")}`);
 
     for (const entry of entries) {
       const name = entry.entryName.toLowerCase();
-      const content = entry.getData().toString("utf8");
 
       // TXT pipe-delimited (formato PLE)
       if (name.endsWith(".txt") || name.endsWith(".csv")) {
-        const lines = content.split("\n").filter(l => l.trim());
-        console.log(`[SIRE Parser] Procesando ${name}: ${lines.length} líneas`);
+        const content = entry.getData().toString("utf8");
+        const lines = content.split("\n").filter(l => l.trim() && l.includes("|"));
+        console.log(`[SIRE Parser] TXT ${name}: ${lines.length} líneas con pipes`);
 
         for (const line of lines) {
           const fields = line.split("|");
-          if (fields.length < 10) continue;
-
-          // Detectar formato por número de campos y tipo
-          const parsed = parseRCELine(fields, tipo);
+          const parsed = tipo === "propuesta-ventas"
+            ? parseRVIELine(fields)
+            : parseRCELine(fields);
           if (parsed) comprobantes.push(parsed);
         }
       }
 
-      // Excel (.xlsx) — algunos períodos vienen en Excel
+      // Excel (.xlsx/.xls)
       if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           const XLSX = require("xlsx");
           const wb = XLSX.read(entry.getData(), { type: "buffer" });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
-          console.log(`[SIRE Parser] Excel ${name}: ${rows.length} filas`);
+          // header: 1 returns arrays; we need to detect header row
+          const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+          console.log(`[SIRE Parser] Excel ${name}: ${allRows.length} filas totales`);
 
-          for (const row of rows.slice(1)) { // skip header
-            const parsed = parseExcelRow(row as string[], tipo);
+          // Find first data row — skip rows that look like headers
+          // A header row has text like "Período", "Fecha", "Tipo", etc.
+          let startRow = 0;
+          for (let i = 0; i < Math.min(5, allRows.length); i++) {
+            const row = allRows[i];
+            const firstCell = String(row[0] ?? "").trim();
+            // If first cell is a 6-digit number (YYYYMM) it's a data row
+            if (/^\d{6}$/.test(firstCell)) {
+              startRow = i;
+              break;
+            }
+            // Otherwise skip (it's a header/title row)
+            startRow = i + 1;
+          }
+
+          console.log(`[SIRE Parser] Excel: starting data at row ${startRow}`);
+
+          for (const row of allRows.slice(startRow)) {
+            const parsed = tipo === "propuesta-ventas"
+              ? parseExcelRVIERow(row)
+              : parseExcelRCERow(row);
             if (parsed) comprobantes.push(parsed);
           }
         } catch (e) {
@@ -126,88 +167,214 @@ export async function parseSireFromZipBuffer(
   return comprobantes;
 }
 
-function parseRCELine(fields: string[], tipo: string): SireComprobanteData | null {
+// ── RCE (Compras) TXT ──────────────────────────────────────────────────────────
+function parseRCELine(fields: string[]): SireComprobanteData | null {
   try {
-    // Limpiar campos
-    const f = fields.map(f => f.trim().replace(/\r/g, ""));
+    const f = fields.map(s => s.trim().replace(/\r/g, ""));
+    if (f.length < 13) return null;
 
-    // Validar que tenga datos mínimos
-    const tipoComp = f[5] || f[4] || "";
-    const serie = f[6] || f[5] || "";
-    const numero = f[8] || f[7] || "";
-    const ruc = f[10] || f[9] || "";
-    const razonSocial = f[11] || f[10] || "";
+    const periodo       = f[0];
+    const fechaEmision  = f[3];
+    const tipoComp      = f[5];
+    const serie         = f[6];
+    const numero        = f[8];
+    const ruc           = f[10];
+    const razonSocial   = f[11];
+    const baseImponible = f[12];
+    const igv           = f[13] ?? "0";
+    const total         = f[21] ?? f[20] ?? "0";
+    const moneda        = f[22] ?? "PEN";
+    const estado        = f[f.length - 1] ?? "1";
+    const codDetrac     = f[28] ?? "";
+    const numConstancia = f[29] ?? "";
+    const fechaPago     = f[30] ?? "";
 
-    if (!numero || !ruc) return null;
-
-    // Determinar índices según tipo de archivo
-    // RCE (compras): campo 0=periodo, 3=fecha, 5=tipo, 6=serie, 8=numero, 10=ruc, 11=razon, 12=base, 13=igv, 21=total, 22=moneda
-    // RVIE (ventas): similar pero con receptor en lugar de emisor
-
-    const esVenta = tipo === "propuesta-ventas";
+    // Validaciones mínimas
+    if (!numero || !serie) return null;
+    if (!ruc || ruc.length < 8) return null;
+    // Skip header rows that slipped through
+    if (isNaN(Number(ruc)) && ruc.length > 0) return null;
+    // Skip anulados (estado = 8)
+    if (estado === "8") return null;
 
     return {
-      periodo: f[0],
-      fechaEmision: formatDate(f[3] || f[2]),
-      tipoComprobante: tipoComp,
-      serie: serie,
-      numero: numero,
-      rucEmisor: esVenta ? "" : ruc,
-      razonSocial: razonSocial,
-      baseImponible: f[12] || "0",
-      igv: f[13] || "0",
-      importeTotal: f[21] || f[20] || "0",
-      moneda: f[22] || f[21] || "PEN",
-      estado: f[f.length - 1] || "1",
-      codigoDetraccion: f[28] || "",
-      numeroConstanciaDetraccion: f[29] || "",
-      fechaPagoDetraccion: f[30] || "",
+      periodo,
+      fechaEmision: formatDate(fechaEmision),
+      tipoComprobante: tipoComp || "01",
+      serie,
+      numero,
+      rucEmisor: ruc,
+      razonSocial,
+      baseImponible: cleanNumber(baseImponible),
+      igv: cleanNumber(igv),
+      importeTotal: cleanNumber(total),
+      moneda: moneda || "PEN",
+      estado,
+      codigoDetraccion: codDetrac,
+      numeroConstanciaDetraccion: numConstancia,
+      fechaPagoDetraccion: fechaPago,
     };
   } catch {
     return null;
   }
 }
 
-function parseExcelRow(row: string[], tipo: string): SireComprobanteData | null {
+// ── RVIE (Ventas) TXT ──────────────────────────────────────────────────────────
+function parseRVIELine(fields: string[]): SireComprobanteData | null {
   try {
-    if (!row || row.length < 5) return null;
+    const f = fields.map(s => s.trim().replace(/\r/g, ""));
+    if (f.length < 12) return null;
+
+    const periodo       = f[0];
+    const fechaEmision  = f[3];
+    const tipoComp      = f[5];
+    const serie         = f[6];
+    const numero        = f[7];
+    const rucReceptor   = f[9];   // cliente
+    const razonSocial   = f[10];  // razón social cliente
+    const baseImponible = f[12];
+    const igv           = f[14] ?? "0";
+    const total         = f[23] ?? f[22] ?? "0";
+    const moneda        = f[24] ?? "PEN";
+    const estado        = f[f.length - 1] ?? "1";
+
+    if (!numero || !serie) return null;
+    if (estado === "8") return null;
+
+    return {
+      periodo,
+      fechaEmision: formatDate(fechaEmision),
+      tipoComprobante: tipoComp || "01",
+      serie,
+      numero,
+      rucEmisor: rucReceptor,  // en ventas, el "emisor" del XML es el cliente (receptor)
+      razonSocial,
+      baseImponible: cleanNumber(baseImponible),
+      igv: cleanNumber(igv),
+      importeTotal: cleanNumber(total),
+      moneda: moneda || "PEN",
+      estado,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── RCE (Compras) Excel ────────────────────────────────────────────────────────
+function parseExcelRCERow(row: string[]): SireComprobanteData | null {
+  try {
+    if (!row || row.length < 10) return null;
     const f = row.map(v => String(v ?? "").trim());
 
-    // Intentar detectar columnas por posición
-    // Formato típico Excel SIRE: Período | Fecha | Tipo | Serie | Número | RUC | Razón Social | Base | IGV | Total | Moneda
-    const numero = f[4] || f[3] || "";
-    const ruc = f[5] || f[4] || "";
+    // Excel RCE columns (same order as TXT):
+    // [0] Período, [1] CUO, [2] Correlativo, [3] Fecha emisión, [4] Fecha venc,
+    // [5] Tipo CP, [6] Serie, [7] Año DUA, [8] Número, [9] Tipo doc,
+    // [10] RUC emisor, [11] Razón social, [12] Base imponible, [13] IGV,
+    // ... [21] Total, [22] Moneda
 
-    if (!numero || !ruc || ruc.length !== 11) return null;
+    const periodo       = f[0];
+    const fechaEmision  = f[3];
+    const tipoComp      = f[5];
+    const serie         = f[6];
+    const numero        = f[8];
+    const ruc           = f[10];
+    const razonSocial   = f[11];
+    const baseImponible = f[12];
+    const igv           = f[13] ?? "0";
+    const total         = f[21] ?? f[20] ?? "0";
+    const moneda        = f[22] ?? "PEN";
+
+    if (!numero || !serie) return null;
+    if (!periodo || !/^\d{6}$/.test(String(periodo))) return null;
+    if (!ruc || String(ruc).length < 8) return null;
+    if (isNaN(Number(String(ruc)))) return null;
 
     return {
-      periodo: f[0],
-      fechaEmision: formatDate(f[1]),
-      tipoComprobante: f[2],
-      serie: f[3],
-      numero: numero,
-      rucEmisor: ruc,
-      razonSocial: f[6] || "",
-      baseImponible: f[7] || "0",
-      igv: f[8] || "0",
-      importeTotal: f[9] || "0",
-      moneda: f[10] || "PEN",
+      periodo: String(periodo),
+      fechaEmision: formatDate(String(fechaEmision)),
+      tipoComprobante: String(tipoComp) || "01",
+      serie: String(serie),
+      numero: String(numero),
+      rucEmisor: String(ruc),
+      razonSocial: String(razonSocial),
+      baseImponible: cleanNumber(String(baseImponible)),
+      igv: cleanNumber(String(igv)),
+      importeTotal: cleanNumber(String(total)),
+      moneda: String(moneda) || "PEN",
     };
   } catch {
     return null;
   }
 }
 
+// ── RVIE (Ventas) Excel ────────────────────────────────────────────────────────
+function parseExcelRVIERow(row: string[]): SireComprobanteData | null {
+  try {
+    if (!row || row.length < 10) return null;
+    const f = row.map(v => String(v ?? "").trim());
+
+    const periodo       = f[0];
+    const fechaEmision  = f[3];
+    const tipoComp      = f[5];
+    const serie         = f[6];
+    const numero        = f[7];
+    const rucReceptor   = f[9];
+    const razonSocial   = f[10];
+    const baseImponible = f[12];
+    const igv           = f[14] ?? "0";
+    const total         = f[23] ?? f[22] ?? "0";
+    const moneda        = f[24] ?? "PEN";
+
+    if (!numero || !serie) return null;
+    if (!periodo || !/^\d{6}$/.test(String(periodo))) return null;
+
+    return {
+      periodo: String(periodo),
+      fechaEmision: formatDate(String(fechaEmision)),
+      tipoComprobante: String(tipoComp) || "01",
+      serie: String(serie),
+      numero: String(numero),
+      rucEmisor: String(rucReceptor),
+      razonSocial: String(razonSocial),
+      baseImponible: cleanNumber(String(baseImponible)),
+      igv: cleanNumber(String(igv)),
+      importeTotal: cleanNumber(String(total)),
+      moneda: String(moneda) || "PEN",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
 function formatDate(dateStr?: string): string {
-  if (!dateStr) return new Date().toISOString().split("T")[0];
+  if (!dateStr || dateStr.trim() === "") return new Date().toISOString().split("T")[0];
+  const s = dateStr.trim();
   // DD/MM/YYYY → YYYY-MM-DD
-  if (dateStr.includes("/")) {
-    const [d, m, y] = dateStr.split("/");
-    return `${y}-${m?.padStart(2,"0")}-${d?.padStart(2,"0")}`;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("/");
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
   // YYYYMMDD → YYYY-MM-DD
-  if (dateStr.length === 8 && !dateStr.includes("-")) {
-    return `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}`;
+  if (/^\d{8}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
   }
-  return dateStr;
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Excel serial date number
+  const num = Number(s);
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    // Excel date serial → JS Date
+    const d = new Date((num - 25569) * 86400 * 1000);
+    return d.toISOString().split("T")[0];
+  }
+  return new Date().toISOString().split("T")[0];
+}
+
+function cleanNumber(s?: string): string {
+  if (!s || s.trim() === "" || s.trim() === "-") return "0";
+  const n = parseFloat(s.replace(/,/g, ""));
+  if (isNaN(n)) return "0";
+  return n.toFixed(2);
 }

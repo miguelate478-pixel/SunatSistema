@@ -145,7 +145,12 @@ async function processZip(
     const esVenta = tipo === "propuesta-ventas";
 
     const vouchersToCreate = comprobantes
-      .filter(c => c.numero && c.serie) // solo los que tienen datos mínimos
+      .filter(c => {
+        if (!c.numero || !c.serie) return false;
+        const d = parseDate(c.fechaEmision);
+        if (isNaN(d.getTime())) return false;
+        return true;
+      })
       .map((c) => ({
         companyId,
         downloadJobId: jobId,
@@ -158,9 +163,9 @@ async function processZip(
         rucReceptor:         esVenta ? (c.rucEmisor || "") : company.ruc,
         razonSocialReceptor: esVenta ? (c.razonSocial || "") : company.razonSocial,
         moneda: c.moneda || "PEN",
-        subtotal: parseFloat(c.baseImponible || "0"),
-        igv: parseFloat(c.igv || "0"),
-        total: parseFloat(c.importeTotal || "0"),
+        subtotal: parseFloat(c.baseImponible || "0") || 0,
+        igv: parseFloat(c.igv || "0") || 0,
+        total: parseFloat(c.importeTotal || "0") || 0,
         estado: "ACEPTADO",
         tieneXML: false,
         tienePDF: false,
