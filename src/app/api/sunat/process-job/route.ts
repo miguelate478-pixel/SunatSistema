@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
 
     const credentials = await prisma.sunatCredential.findUnique({ where: { companyId: job.companyId } });
     if (!credentials) return NextResponse.json({ success: false, error: "Sin credenciales SUNAT" }, { status: 400 });
+    if (!credentials.clientSecret?.trim()) return NextResponse.json({ success: false, error: "client_secret vacío. Ve a Configuración y guarda las credenciales." }, { status: 400 });
+    if (!credentials.claveSol?.trim()) return NextResponse.json({ success: false, error: "Clave SOL vacía. Ve a Configuración y guarda las credenciales." }, { status: 400 });
 
     const client = new SunatClient(
       credentials.clientId,
@@ -98,7 +100,7 @@ async function downloadAndInsertVouchers(
   const esVenta = tipo === "propuesta-ventas";
   const codLibro = esVenta ? "140000" : "080000";
 
-  // Get auth token
+  // Get auth token — always fresh (no in-memory cache in serverless)
   const token = await client.getOAuth2Token();
   const authHeaders = {
     Authorization: `Bearer ${token}`,
