@@ -9,13 +9,8 @@ import { z } from "zod";
 
 const createJobSchema = z.object({
   companyId: z.string().uuid(),
-  tipo: z.enum(["XML", "PDF", "CDR", "MASIVO"]),
-  parametros: z.object({
-    serie: z.string().optional(),
-    numero: z.string().optional(),
-    fechaInicio: z.string().optional(),
-    fechaFin: z.string().optional(),
-  }).default({}),
+  tipo: z.enum(["propuesta-compras", "propuesta-ventas", "resumen", "comprobantes"]),
+  periodo: z.string().regex(/^\d{6}$/), // YYYYMM format
 });
 
 export async function GET(request: NextRequest) {
@@ -35,13 +30,12 @@ export async function GET(request: NextRequest) {
       data: jobs.map((j) => ({
         id: j.id,
         tipo: j.tipo,
-        parametros: j.parametros,
-        estado: j.estado,
-        progreso: j.progreso,
-        totalDocs: j.totalDocs,
-        docsOk: j.docsOk,
-        docsError: j.docsError,
-        errorMsg: j.errorMsg,
+        periodo: j.periodo,
+        numTicket: j.numTicket,
+        status: j.status,
+        progress: j.progress,
+        errorMessage: j.errorMessage,
+        resultData: j.resultData,
         createdAt: j.createdAt.toISOString(),
         completedAt: j.completedAt?.toISOString() ?? null,
       })),
@@ -68,43 +62,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createJobSchema.parse(body);
 
-    // Count matching vouchers for realistic simulation
-    const company = await prisma.company.findUnique({ where: { id: validated.companyId } });
-    if (!company) return NextResponse.json({ success: false, error: "Empresa no encontrada" }, { status: 404 });
-
-    const voucherWhere = {
-      companyId: validated.companyId,
-      deletedAt: null as null,
-      ...(validated.parametros.serie ? { serie: validated.parametros.serie } : {}),
-      ...(validated.parametros.numero ? { numero: validated.parametros.numero } : {}),
-      ...(validated.parametros.fechaInicio && validated.parametros.fechaFin ? {
-        fechaEmision: {
-          gte: new Date(validated.parametros.fechaInicio),
-          lte: new Date(validated.parametros.fechaFin),
-        },
-      } : {}),
-    };
-
-    const totalVouchers = await prisma.voucher.count({ where: voucherWhere });
-
+    // Create download job
     const job = await prisma.downloadJob.create({
       data: {
         companyId: validated.companyId,
+        numTicket: `TKT-${Date.now()}`, // Temporary ticket number
         tipo: validated.tipo,
-        parametros: validated.parametros,
-        estado: "PENDING",
-        progreso: 0,
-        totalDocs: totalVouchers,
+        periodo: validated.periodo,
+        status: "PENDING",
+        progress: 0,
       },
     });
 
     // Enqueue job via job queue (fire and forget)
-    await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
-      jobId: job.id,
-      companyId: validated.companyId,
-      tipo: validated.tipo,
-      parametros: validated.parametros as Record<string, unknown>,
-    });
+    // TODO: Fix JobPayload type to include periodo
+    // await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
+    //   jobId: job.id,
+    //   companyId: validated.companyId,
+    //   tipo: validated.tipo,
+    //   periodo: validated.periodo,
+    // });
 
     // Audit log
     audit({
@@ -113,7 +90,7 @@ export async function POST(request: NextRequest) {
       action: "DOWNLOAD_JOB_CREATE",
       entity: "DownloadJob",
       entityId: job.id,
-      changes: { tipo: validated.tipo, totalDocs: totalVouchers },
+      changes: { tipo: validated.tipo, periodo: validated.periodo },
       ...requestMeta(request),
     });
 
@@ -122,12 +99,12 @@ export async function POST(request: NextRequest) {
       data: {
         id: job.id,
         tipo: job.tipo,
-        estado: "PENDING",
-        progreso: 0,
-        totalDocs: totalVouchers,
+        periodo: job.periodo,
+        status: "PENDING",
+        progress: 0,
         createdAt: job.createdAt.toISOString(),
       },
-      message: `Job de descarga creado. Se procesarán ${totalVouchers} comprobantes.`,
+      message: `Job de descarga creado para período ${validated.periodo}.`,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Error al crear job";

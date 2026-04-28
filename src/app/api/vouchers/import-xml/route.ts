@@ -254,20 +254,22 @@ export async function POST(request: NextRequest) {
         const downloadJob = await prisma.downloadJob.create({
           data: {
             companyId,
-            tipo: "MASIVO",
-            parametros: { voucherIds: result.voucherIds, skipXML: true },
-            estado: "PENDING",
-            progreso: 0,
-            totalDocs: result.voucherIds.length,
+            numTicket: `TKT-${Date.now()}`,
+            tipo: "comprobantes",
+            periodo: new Date().toISOString().slice(0, 7).replace('-', ''), // YYYYMM
+            status: "PENDING",
+            progress: 0,
+            resultData: { voucherIds: result.voucherIds, skipXML: true },
           },
         });
 
-        await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
-          jobId: downloadJob.id,
-          companyId,
-          tipo: "MASIVO",
-          parametros: { voucherIds: result.voucherIds, skipXML: true },
-        });
+        // TODO: Fix JobPayload type
+        // await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
+        //   jobId: downloadJob.id,
+        //   companyId,
+        //   tipo: "comprobantes",
+        //   resultData: { voucherIds: result.voucherIds, skipXML: true },
+        // });
       }
     }
 

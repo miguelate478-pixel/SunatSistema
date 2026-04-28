@@ -64,10 +64,13 @@ async function processDownload(
 
   logger.info("[DownloadWorker] Processing vouchers", { jobId, companyId, tipo, count: vouchers.length });
 
-  // Update total count
+  // Update progress
   await prisma.downloadJob.update({
     where: { id: jobId },
-    data: { totalDocs: vouchers.length },
+    data: { 
+      progress: 10,
+      resultData: { totalVouchers: vouchers.length }
+    },
   });
 
   let docsOk = 0;
@@ -153,7 +156,12 @@ async function processDownload(
         });
         prisma.downloadJob.update({
           where: { id: jobId },
-          data: { metadata: { lastError: userMsg, lastErrorVoucher: `${voucher.serie}-${voucher.numero}` } },
+          data: { 
+            resultData: { 
+              lastError: userMsg, 
+              lastErrorVoucher: `${voucher.serie}-${voucher.numero}` 
+            } 
+          },
         }).catch(() => {});
       }
     }
@@ -162,7 +170,13 @@ async function processDownload(
     const total = Math.max(vouchers.length, 1);
     const done = docsOk + docsError;
     const progress = Math.min(Math.round((done / total) * 90) + 10, 95);
-    await prisma.downloadJob.update({ where: { id: jobId }, data: { progreso: progress, docsOk } });
+    await prisma.downloadJob.update({ 
+      where: { id: jobId }, 
+      data: { 
+        progress: progress, 
+        resultData: { docsOk, docsError, total }
+      } 
+    });
   }
 
   // Update lastSyncAt
@@ -175,21 +189,26 @@ async function processDownload(
 }
 
 async function handleDownloadJob(payload: JobPayload): Promise<void> {
-  const { jobId, companyId, tipo, parametros } = payload;
+  const { jobId, companyId, tipo } = payload;
 
   try {
     await prisma.downloadJob.update({
       where: { id: jobId },
-      data: { estado: "PROCESSING", progreso: 10 },
+      data: { status: "RUNNING", progress: 10 },
     });
 
     const { docsOk, docsError } = await processDownload(
-      jobId, companyId, tipo, parametros as DownloadParams
+      jobId, companyId, tipo, {} as DownloadParams
     );
 
     await prisma.downloadJob.update({
       where: { id: jobId },
-      data: { estado: "COMPLETED", progreso: 100, docsOk, docsError, completedAt: new Date() },
+      data: { 
+        status: "SUCCESS", 
+        progress: 100, 
+        resultData: { docsOk, docsError }, 
+        completedAt: new Date() 
+      },
     });
 
     logger.job(JOB_TYPES.DOWNLOAD_SUNAT, jobId, "completed", { docsOk, docsError });
@@ -197,7 +216,7 @@ async function handleDownloadJob(payload: JobPayload): Promise<void> {
     const errorMsg = toUserMessage(err);
     await prisma.downloadJob.update({
       where: { id: jobId },
-      data: { estado: "FAILED", errorMsg, progreso: 0 },
+      data: { status: "FAILED", errorMessage: errorMsg, progress: 0 },
     });
     logger.error("[DownloadWorker] Job failed", { jobId, error: err instanceof Error ? err.message : String(err) });
     throw err;

@@ -71,6 +71,22 @@ export class AuthService {
     await userRepository.update(userId, { password: hashed });
     return { success: true };
   }
+
+  async validateCredentials(email: string, password: string) {
+    const user = await userRepository.findByEmail(email);
+    if (!user || !user.isActive) return null;
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  async updatePassword(userId: string, newPassword: string) {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(userId, { password: hashedPassword });
+    return { success: true };
+  }
 }
 
 export const authService = new AuthService();

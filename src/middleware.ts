@@ -16,6 +16,8 @@ const PROTECTED_PATHS = [
   "/ia",
   "/descargas",
   "/configuracion",
+  "/sire",
+  "/admin",
 ];
 
 // Security headers applied to all responses

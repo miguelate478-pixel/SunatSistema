@@ -1,93 +1,88 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { CheckCircle2, AlertCircle, Rocket, ArrowRight } from "lucide-react";
 
-interface Step {
-  id: string;
-  label: string;
-  description: string;
-  href: string;
-  done: boolean;
-}
-
-interface Props {
+interface OnboardingBannerProps {
   hasCredentials: boolean;
   credentialsOk: boolean;
   hasVouchers: boolean;
 }
 
-export function OnboardingBanner({ hasCredentials, credentialsOk, hasVouchers }: Props) {
-  const [dismissed, setDismissed] = useState(false);
-
-  const steps: Step[] = [
-    {
-      id: "credentials",
-      label: "Configurar credenciales SUNAT",
-      description: "Ingresa tu RUC, Client ID, Client Secret, Usuario SOL y Clave SOL",
-      href: "/configuracion",
-      done: hasCredentials,
-    },
-    {
-      id: "test",
-      label: "Probar conexión SUNAT",
-      description: "Verifica que las credenciales son correctas",
-      href: "/configuracion",
-      done: credentialsOk,
-    },
-    {
-      id: "import",
-      label: "Importar tus primeras facturas",
-      description: "Sube un ZIP con tus XMLs de SUNAT o importa un CSV",
-      href: "/compras",
-      done: hasVouchers,
-    },
-  ];
-
-  const completedCount = steps.filter((s) => s.done).length;
-  const allDone = completedCount === steps.length;
-
-  if (dismissed || allDone) return null;
+export function OnboardingBanner({ hasCredentials, credentialsOk, hasVouchers }: OnboardingBannerProps) {
+  // If everything is set up, don't show the banner
+  if (hasCredentials && credentialsOk && hasVouchers) {
+    return null;
+  }
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 relative">
-      <button
-        onClick={() => setDismissed(true)}
-        className="absolute top-3 right-3 text-blue-400 hover:text-blue-600"
-      >
-        <X className="w-4 h-4" />
-      </button>
-
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-          <span className="text-white text-xs font-bold">{completedCount}/{steps.length}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-blue-900 mb-3">
-            Configura tu cuenta para empezar — {completedCount} de {steps.length} pasos completados
-          </p>
-          <div className="space-y-2">
-            {steps.map((step) => (
-              <Link key={step.id} href={step.href} className="flex items-center gap-3 group">
-                {step.done
-                  ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  : <Circle className="w-4 h-4 text-blue-300 shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-medium ${step.done ? "text-gray-400 line-through" : "text-blue-800 group-hover:text-blue-600"}`}>
-                    {step.label}
-                  </p>
-                  {!step.done && (
-                    <p className="text-xs text-blue-600">{step.description}</p>
-                  )}
-                </div>
-                {!step.done && <ChevronRight className="w-3.5 h-3.5 text-blue-400 shrink-0 group-hover:text-blue-600" />}
-              </Link>
-            ))}
+    <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+      <CardContent className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+            <Rocket className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              ¡Bienvenido a ControlSUNAT!
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Completa estos pasos para comenzar a sincronizar tus comprobantes electrónicos:
+            </p>
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center gap-2 text-sm">
+                {hasCredentials ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                )}
+                <span className={hasCredentials ? "text-emerald-700 font-medium" : "text-gray-700"}>
+                  {hasCredentials ? "Credenciales SUNAT configuradas" : "Configura tus credenciales SUNAT SOL"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                {credentialsOk ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                )}
+                <span className={credentialsOk ? "text-emerald-700 font-medium" : "text-gray-700"}>
+                  {credentialsOk ? "Credenciales verificadas" : "Verifica tus credenciales"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                {hasVouchers ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                )}
+                <span className={hasVouchers ? "text-emerald-700 font-medium" : "text-gray-700"}>
+                  {hasVouchers ? "Comprobantes sincronizados" : "Sincroniza tus primeros comprobantes"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {!hasCredentials && (
+                <Link href="/configuracion">
+                  <Button size="sm" className="gap-2">
+                    Configurar credenciales <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </Link>
+              )}
+              {hasCredentials && !hasVouchers && (
+                <Link href="/descargas">
+                  <Button size="sm" className="gap-2">
+                    Sincronizar ahora <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </Link>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

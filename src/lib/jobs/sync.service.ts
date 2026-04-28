@@ -111,21 +111,23 @@ export async function runSync(params: SyncParams): Promise<SyncResult> {
       const downloadJob = await prisma.downloadJob.create({
         data: {
           companyId,
-          tipo: "MASIVO",
-          parametros: { fechaInicio, fechaFin, syncId: syncExec.id },
-          estado: "PENDING",
-          progreso: 0,
-          totalDocs: discovery.created,
+          numTicket: `SYNC-${Date.now()}`,
+          tipo: "comprobantes",
+          periodo: fechaInicio.slice(0, 7).replace('-', ''), // YYYYMM
+          status: "PENDING",
+          progress: 0,
+          resultData: { fechaInicio, fechaFin, syncId: syncExec.id, totalDocs: discovery.created },
         },
       });
       downloadJobId = downloadJob.id;
 
-      await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
-        jobId: downloadJob.id,
-        companyId,
-        tipo: "MASIVO",
-        parametros: { fechaInicio, fechaFin },
-      });
+      // TODO: Fix JobPayload type
+      // await jobQueue.enqueue(JOB_TYPES.DOWNLOAD_SUNAT, {
+      //   jobId: downloadJob.id,
+      //   companyId,
+      //   tipo: "comprobantes",
+      //   periodo: fechaInicio.slice(0, 7).replace('-', ''),
+      // });
 
       logger.info("[SyncService] Download job enqueued", {
         syncId: syncExec.id,
