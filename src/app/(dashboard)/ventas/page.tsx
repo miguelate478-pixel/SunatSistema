@@ -269,7 +269,7 @@ export default function VentasPage() {
                 }}
               >
                 <option value="">Todos los períodos</option>
-                {Array.from({ length: 12 }, (_, i) => {
+                {Array.from({ length: 36 }, (_, i) => {
                   const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
                   const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
                   const label = d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });

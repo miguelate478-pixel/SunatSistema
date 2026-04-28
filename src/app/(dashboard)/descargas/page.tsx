@@ -42,7 +42,7 @@ const TIPO_CONFIG = {
   "comprobantes":      { icon: Package,   label: "Comprobantes",      color: "text-amber-600 bg-amber-50" },
 };
 
-function getMonths(n = 6) {
+function getMonths(n = 24) {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date();
     d.setDate(1);
@@ -62,7 +62,7 @@ export default function DescargasPage() {
   const [creating, setCreating] = useState<string | null>(null);
   const [credStatus, setCredStatus] = useState<SunatCredStatus | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
-  const months = getMonths(6);
+  const months = getMonths(24);
 
   const loadJobs = useCallback(async () => {
     if (!companyId) return;
