@@ -18,6 +18,7 @@ export interface DashboardSummary {
   detraccionesPendientes: number;
   impuestoProximo: number;
   diasParaImpuesto: number;
+  periodoReferencia?: string;
   topProveedores: Array<{ ruc: string; nombre: string; monto: number; facturas: number }>;
   recentVouchers: Array<{
     id: string;

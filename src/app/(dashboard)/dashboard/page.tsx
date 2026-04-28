@@ -128,17 +128,17 @@ export default function DashboardPage() {
     <div className="flex flex-col h-full">
       <Topbar
         title="Dashboard"
-        subtitle={`Resumen ejecutivo · ${new Date().toLocaleDateString("es-PE", { month: "long", year: "numeric" })}`}
+        subtitle={`Resumen ejecutivo · ${summary.periodoReferencia ?? new Date().toLocaleDateString("es-PE", { month: "long", year: "numeric" })}`}
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
 
-        {/* Critical alerts banner */}
-        {totalDocsFaltantes > 0 && (
+        {/* Only show missing docs alert if there are vouchers with XML that are missing PDF/CDR */}
+        {summary.xmlFaltantes > 0 && summary.documentosDescargados > 0 && summary.xmlFaltantes < summary.documentosDescargados && (
           <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <p className="text-sm text-red-700 flex-1">
-              <span className="font-semibold">{totalDocsFaltantes} documentos faltantes</span> requieren atención inmediata.
+              <span className="font-semibold">{summary.xmlFaltantes} documentos</span> sin archivos XML descargados.
             </p>
             <Link href="/documentos">
               <Button variant="destructive" size="sm">Ver documentos</Button>
@@ -213,13 +213,13 @@ export default function DashboardPage() {
           />
           <KpiCard
             title="Docs Faltantes"
-            value={totalDocsFaltantes.toString()}
-            subtitle={`XML: ${summary.xmlFaltantes} · PDF: ${summary.pdfFaltantes} · CDR: ${summary.cdrFaltantes}`}
+            value={summary.xmlFaltantes.toString()}
+            subtitle={`Sin XML: ${summary.xmlFaltantes}`}
             icon={AlertTriangle}
-            iconColor="text-red-600"
-            iconBg="bg-red-50"
-            alert={totalDocsFaltantes > 0}
-            alertLevel="error"
+            iconColor="text-amber-600"
+            iconBg="bg-amber-50"
+            alert={summary.xmlFaltantes > 0 && summary.xmlFaltantes < summary.documentosDescargados}
+            alertLevel="warning"
           />
           <KpiCard
             title="Detracciones Pend."

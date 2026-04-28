@@ -7,19 +7,26 @@ export class DashboardService {
       companyId,
       deletedAt: null,
       ...(fechaInicio && fechaFin && {
-        fechaEmision: {
-          gte: fechaInicio,
-          lte: fechaFin,
-        },
+        fechaEmision: { gte: fechaInicio, lte: fechaFin },
       }),
     };
 
-    // Get current month data
-    const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    const ruc = company?.ruc ?? "";
+
+    // Find the last month that has actual data
+    const lastVoucher = await prisma.voucher.findFirst({
+      where: { companyId, deletedAt: null },
+      orderBy: { fechaEmision: "desc" },
+      select: { fechaEmision: true },
+    });
+
+    // Use last month with data, or current month if no data
+    const refDate = lastVoucher?.fechaEmision ?? new Date();
+    const currentMonthStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+    const currentMonthEnd = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0);
+    const previousMonthStart = new Date(refDate.getFullYear(), refDate.getMonth() - 1, 1);
+    const previousMonthEnd = new Date(refDate.getFullYear(), refDate.getMonth(), 0);
 
     const [
       comprasMes,
@@ -36,40 +43,20 @@ export class DashboardService {
       cuentasCobrar,
       cuentasPagar,
     ] = await Promise.all([
-      // Compras mes actual
       prisma.voucher.aggregate({
-        where: {
-          ...where,
-          fechaEmision: { gte: currentMonthStart, lte: currentMonthEnd },
-          rucReceptor: (await prisma.company.findUnique({ where: { id: companyId } }))?.ruc,
-        },
+        where: { ...where, fechaEmision: { gte: currentMonthStart, lte: currentMonthEnd }, rucReceptor: ruc },
         _sum: { total: true },
       }),
-      // Compras mes anterior
       prisma.voucher.aggregate({
-        where: {
-          ...where,
-          fechaEmision: { gte: previousMonthStart, lte: previousMonthEnd },
-          rucReceptor: (await prisma.company.findUnique({ where: { id: companyId } }))?.ruc,
-        },
+        where: { ...where, fechaEmision: { gte: previousMonthStart, lte: previousMonthEnd }, rucReceptor: ruc },
         _sum: { total: true },
       }),
-      // Ventas mes actual
       prisma.voucher.aggregate({
-        where: {
-          ...where,
-          fechaEmision: { gte: currentMonthStart, lte: currentMonthEnd },
-          rucEmisor: (await prisma.company.findUnique({ where: { id: companyId } }))?.ruc,
-        },
+        where: { ...where, fechaEmision: { gte: currentMonthStart, lte: currentMonthEnd }, rucEmisor: ruc },
         _sum: { total: true },
       }),
-      // Ventas mes anterior
       prisma.voucher.aggregate({
-        where: {
-          ...where,
-          fechaEmision: { gte: previousMonthStart, lte: previousMonthEnd },
-          rucEmisor: (await prisma.company.findUnique({ where: { id: companyId } }))?.ruc,
-        },
+        where: { ...where, fechaEmision: { gte: previousMonthStart, lte: previousMonthEnd }, rucEmisor: ruc },
         _sum: { total: true },
       }),
       // Documentos descargados
@@ -123,6 +110,7 @@ export class DashboardService {
       cuentasPagar: Number(cuentasPagar._sum.saldo || 0),
       impuestoProximo: 45320.0, // Mock - calcular según lógica real
       diasParaImpuesto: 8, // Mock - calcular según fecha
+      periodoReferencia: currentMonthStart.toLocaleDateString("es-PE", { month: "long", year: "numeric" }),
     };
   }
 
