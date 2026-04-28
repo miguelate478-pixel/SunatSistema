@@ -1,71 +1,53 @@
+/**
+ * POST /api/sunat/request-download
+ *
+ * Flujo correcto SIRE:
+ * 1. Solicita ticket con exportacioncomprobantepropuesta (codProceso=10)
+ * 2. El ticket termina con nomArchivoReporte = "RUC-FECHA-propuesta.zip"
+ * 3. Ese archivo NO se puede descargar directamente (SUNAT devuelve 422)
+ * 4. En cambio, hay que buscar el ticket codProceso=5 (Generación de Registros)
+ *    que tiene los archivos LE...zip con los datos reales
+ *
+ * Estrategia: al crear el job, guardamos el período y tipo.
+ * process-job buscará todos los tickets del período y descargará
+ * los archivos LE...zip del ticket codProceso=5.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import prisma from "@/lib/db/prisma";
-import { SunatClient } from "@/lib/sunat/sunat-client";
-import { getTicketPoller } from "@/lib/sunat/ticket-poller";
 import { z } from "zod";
 
-const requestDownloadSchema = z.object({
+const schema = z.object({
   companyId: z.string().uuid(),
-  tipo: z.enum(["propuesta-compras", "propuesta-ventas", "propuesta", "resumen", "comprobantes"]),
+  tipo: z.enum(["propuesta-compras", "propuesta-ventas"]),
   periodo: z.string().regex(/^\d{6}$/),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: "No autenticado" },
-        { status: 401 }
-      );
-    }
+    if (!session) return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
 
     const body = await req.json();
-    const validation = requestDownloadSchema.safeParse(body);
+    const validation = schema.safeParse(body);
     if (!validation.success) {
-      return NextResponse.json(
-        { success: false, error: validation.error.issues[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: validation.error.issues[0].message }, { status: 400 });
     }
 
     const { companyId, tipo, periodo } = validation.data;
 
-    // Verify user has access to this company
     const hasAccess = session.companyRoles.some((cr) => cr.company.id === companyId);
-    if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "No tienes acceso a esta empresa" },
-        { status: 403 }
-      );
-    }
+    if (!hasAccess) return NextResponse.json({ success: false, error: "Sin acceso" }, { status: 403 });
 
-    const credentials = await prisma.sunatCredential.findUnique({
-      where: { companyId },
-    });
+    const credentials = await prisma.sunatCredential.findUnique({ where: { companyId } });
+    if (!credentials) return NextResponse.json({ success: false, error: "Sin credenciales SUNAT" }, { status: 400 });
 
-    if (!credentials) {
-      return NextResponse.json(
-        { success: false, error: "No hay credenciales SUNAT configuradas" },
-        { status: 400 }
-      );
-    }
-
-    const client = new SunatClient(
-      credentials.clientId,
-      credentials.clientSecret,
-      credentials.ruc,
-      credentials.usuario,
-      credentials.claveSol
-    );
-
-    const numTicket = await client.requestDownloadTicket(tipo, periodo);
-
-    const downloadJob = await prisma.downloadJob.create({
+    // Create job — numTicket will be set to "SCAN" to indicate we need to scan for LE files
+    const job = await prisma.downloadJob.create({
       data: {
         companyId,
-        numTicket,
+        numTicket: `SCAN_${tipo}_${periodo}_${Date.now()}`,
         tipo,
         periodo,
         status: "PENDING",
@@ -73,25 +55,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Start polling
-    const poller = getTicketPoller();
-    poller.startPolling(downloadJob.id, companyId, credentials.id);
-
     return NextResponse.json({
       success: true,
-      data: {
-        jobId: downloadJob.id,
-        numTicket,
-        tipo,
-        periodo,
-      },
-      message: "Descarga solicitada correctamente",
+      data: { jobId: job.id, tipo, periodo },
+      message: "Descarga iniciada",
     });
   } catch (error) {
-    console.error("Error requesting download:", error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Error al solicitar descarga" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
