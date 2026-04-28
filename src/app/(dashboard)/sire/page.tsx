@@ -11,7 +11,7 @@ import {
   BookOpen, ShoppingCart, TrendingUp, ExternalLink,
 } from "lucide-react";
 
-function getMonths(n = 6) {
+function getMonths(n = 36) {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date();
     d.setDate(1);
@@ -25,7 +25,7 @@ function getMonths(n = 6) {
 export default function SirePage() {
   const { activeCompany } = useActiveCompany();
   const companyId = activeCompany?.id;
-  const months = getMonths(6);
+  const months = getMonths(36);
   const [periodo, setPeriodo] = useState(months[0].value);
   const [generatingRCE, setGeneratingRCE] = useState(false);
   const [generatingRVIE, setGeneratingRVIE] = useState(false);
