@@ -148,17 +148,19 @@ async function downloadAndInsertVouchers(
     console.log(`[process-job] Archivos LE encontrados: ${filesToDownload.join(", ")}`);
   }
 
-  // If no codProceso=5 ticket, try to construct LE filenames directly
+    // If no codProceso=5 ticket, try to construct LE filenames directly
   if (filesToDownload.length === 0) {
     // Standard LE filename patterns
+    // 0804 = inconsistencias/errores (has actual data)
+    // 0805 = comprobantes (often empty)
     const patterns = esVenta
       ? [
-          `LE${ruc}${periodo}0140400011112.zip`,  // ventas inconsistencias (has data)
-          `LE${ruc}${periodo}0140500001012.zip`,  // ventas comprobantes
+          `LE${ruc}${periodo}0140400011112.zip`,  // ventas 0804 (has data)
+          `LE${ruc}${periodo}0140500001012.zip`,  // ventas 0805
         ]
       : [
-          `LE${ruc}${periodo}0080400011112.zip`,  // compras inconsistencias (has data)
-          `LE${ruc}${periodo}0080500001012.zip`,  // compras comprobantes
+          `LE${ruc}${periodo}0080400011112.zip`,  // compras 0804 (has data)
+          `LE${ruc}${periodo}0080500001012.zip`,  // compras 0805
         ];
     filesToDownload = patterns;
     console.log(`[process-job] Usando patrones estándar: ${filesToDownload.join(", ")}`);
@@ -220,13 +222,26 @@ async function downloadAndInsertVouchers(
           let baseImponible = 0, igv = 0, total = 0, moneda = "PEN";
 
           if (f.length >= 34 && f[0].length === 11) {
-            // RVIE/RCE inconsistencias format: [0]=RUC, [4]=fecha, [6]=tipo, [7]=serie, [8]=numero
+            // RVIE/RCE inconsistencias format (0804/1404):
+            // [0] RUC emisor, [1] Razón social, [2] Período, [3] CUO,
+            // [4] Fecha emisión, [5] Fecha vencimiento, [6] Tipo CP,
+            // [7] Serie, [8] Número inicio, [9] Número fin (rango)
+            // For single docs: [8] = numero, [9] = empty
             rucDoc = f[0];
             razonDoc = f[1] || "";
             fechaStr = f[4];
             tipoComp = f[6] || "01";
             serie = f[7];
-            numero = f[8];
+            // numero: use [8] if it has a value, otherwise try [9]
+            numero = f[8] || f[9] || "";
+            // If numero is empty but we have a CUO, extract from CUO
+            // CUO format: RUC + tipo + serie + numero (e.g. "2061016984901FF18000001")
+            if (!numero && f[3]) {
+              const cuo = f[3];
+              // Try to extract numero from end of CUO
+              const match = cuo.match(/(\d+)$/);
+              if (match) numero = String(parseInt(match[1], 10));
+            }
             // Find montos
             for (let i = 12; i < Math.min(f.length, 35); i++) {
               const n = parseFloat(f[i]);
