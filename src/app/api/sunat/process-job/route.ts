@@ -11,6 +11,8 @@ import { getSession } from "@/lib/auth/session";
 import prisma from "@/lib/db/prisma";
 import { SunatClient } from "@/lib/sunat/sunat-client";
 import { parseXmlFromZipBuffer } from "@/lib/sunat/xml-processor";
+import { parseSireFromZipBuffer } from "@/lib/sunat/sire-parser";
+import AdmZip from "adm-zip";
 import { z } from "zod";
 
 const schema = z.object({ jobId: z.string().uuid() });
@@ -98,7 +100,41 @@ async function processZip(
 ) {
   try {
     const zipBuffer = await client.downloadFile(nomArchivo, extra as Parameters<typeof client.downloadFile>[1]);
-    const comprobantes = await parseXmlFromZipBuffer(zipBuffer, tipo);
+
+    // Detectar qué tipo de archivos hay en el ZIP
+    let comprobantes: Array<{
+      rucEmisor?: string; razonSocial?: string; tipoComprobante?: string;
+      serie?: string; numero?: string; fechaEmision?: string;
+      moneda?: string; baseImponible?: string; igv?: string; importeTotal?: string;
+    }> = [];
+
+    try {
+      const zip = new AdmZip(zipBuffer);
+      const entries = zip.getEntries();
+      const hasXml = entries.some(e => e.entryName.toLowerCase().endsWith(".xml"));
+      const hasTxt = entries.some(e => e.entryName.toLowerCase().endsWith(".txt"));
+      const hasXlsx = entries.some(e => e.entryName.toLowerCase().endsWith(".xlsx") || e.entryName.toLowerCase().endsWith(".xls"));
+
+      console.log(`[process-job] ZIP entries: ${entries.map(e => e.entryName).join(", ")}`);
+      console.log(`[process-job] hasXml=${hasXml} hasTxt=${hasTxt} hasXlsx=${hasXlsx}`);
+
+      if (hasXml) {
+        // XMLs individuales de comprobantes
+        comprobantes = await parseXmlFromZipBuffer(zipBuffer, tipo);
+      } else if (hasTxt || hasXlsx) {
+        // Formato PLE/SIRE (TXT pipe-delimited o Excel)
+        comprobantes = await parseSireFromZipBuffer(zipBuffer, tipo);
+      } else {
+        // Intentar como TXT directo (sin ZIP interno)
+        comprobantes = await parseSireFromZipBuffer(zipBuffer, tipo);
+      }
+    } catch (parseError) {
+      console.error("[process-job] Error parseando ZIP:", parseError);
+      // Intentar SIRE parser como fallback
+      comprobantes = await parseSireFromZipBuffer(zipBuffer, tipo);
+    }
+
+    console.log(`[process-job] Comprobantes parseados: ${comprobantes.length}`);
 
     const company = await prisma.company.findUnique({
       where: { id: companyId },
@@ -108,29 +144,31 @@ async function processZip(
 
     const esVenta = tipo === "propuesta-ventas";
 
-    const vouchersToCreate = comprobantes.map((c) => ({
-      companyId,
-      downloadJobId: jobId,
-      tipo: mapTipo(c.tipoComprobante || ""),
-      serie: c.serie || "",
-      numero: c.numero || "",
-      fechaEmision: parseDate(c.fechaEmision),
-      rucEmisor:           esVenta ? company.ruc        : (c.rucEmisor || ""),
-      razonSocialEmisor:   esVenta ? company.razonSocial : (c.razonSocial || ""),
-      rucReceptor:         esVenta ? (c.rucEmisor || "") : company.ruc,
-      razonSocialReceptor: esVenta ? (c.razonSocial || "") : company.razonSocial,
-      moneda: c.moneda || "PEN",
-      subtotal: parseFloat(c.baseImponible || "0"),
-      igv: parseFloat(c.igv || "0"),
-      total: parseFloat(c.importeTotal || "0"),
-      estado: "ACEPTADO",
-      tieneXML: true,
-      tienePDF: false,
-      tieneCDR: false,
-      afectoDetraccion: false,
-      direccion: esVenta ? "VENTA" : "COMPRA",
-      createdById: null,
-    }));
+    const vouchersToCreate = comprobantes
+      .filter(c => c.numero && c.serie) // solo los que tienen datos mínimos
+      .map((c) => ({
+        companyId,
+        downloadJobId: jobId,
+        tipo: mapTipo(c.tipoComprobante || ""),
+        serie: c.serie || "",
+        numero: c.numero || "",
+        fechaEmision: parseDate(c.fechaEmision),
+        rucEmisor:           esVenta ? company.ruc        : (c.rucEmisor || ""),
+        razonSocialEmisor:   esVenta ? company.razonSocial : (c.razonSocial || ""),
+        rucReceptor:         esVenta ? (c.rucEmisor || "") : company.ruc,
+        razonSocialReceptor: esVenta ? (c.razonSocial || "") : company.razonSocial,
+        moneda: c.moneda || "PEN",
+        subtotal: parseFloat(c.baseImponible || "0"),
+        igv: parseFloat(c.igv || "0"),
+        total: parseFloat(c.importeTotal || "0"),
+        estado: "ACEPTADO",
+        tieneXML: false,
+        tienePDF: false,
+        tieneCDR: false,
+        afectoDetraccion: false,
+        direccion: esVenta ? "VENTA" : "COMPRA",
+        createdById: null,
+      }));
 
     let totalInserted = 0;
     for (let i = 0; i < vouchersToCreate.length; i += 100) {
