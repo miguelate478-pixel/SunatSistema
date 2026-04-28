@@ -9,11 +9,25 @@ export async function GET(request: NextRequest) {
 
     await requireCompanyAccess(companyId);
 
-    // Return vouchers (each voucher IS a document record)
     const vouchers = await prisma.voucher.findMany({
       where: { companyId, deletedAt: null },
       orderBy: { fechaEmision: "desc" },
-      take: 100,
+      take: 200,
+      select: {
+        id: true,
+        serie: true,
+        numero: true,
+        tipo: true,
+        razonSocialEmisor: true,
+        rucEmisor: true,
+        fechaEmision: true,
+        total: true,
+        moneda: true,
+        tieneXML: true,
+        tienePDF: true,
+        tieneCDR: true,
+        estado: true,
+      },
     });
 
     return NextResponse.json({
@@ -26,8 +40,6 @@ export async function GET(request: NextRequest) {
         tipo: v.tipo,
         razonSocialEmisor: v.razonSocialEmisor,
         rucEmisor: v.rucEmisor,
-        razonSocialReceptor: v.razonSocialReceptor,
-        rucReceptor: v.rucReceptor,
         fechaEmision: v.fechaEmision.toISOString(),
         total: Number(v.total),
         moneda: v.moneda,
@@ -35,12 +47,12 @@ export async function GET(request: NextRequest) {
         tienePDF: v.tienePDF,
         tieneCDR: v.tieneCDR,
         estado: v.estado,
-        folderPath: `/${v.fechaEmision.getFullYear()}/${v.tipo}`,
+        folderPath: `/${v.fechaEmision.getFullYear()}/${String(v.fechaEmision.getMonth() + 1).padStart(2, "0")}`,
         downloadCount: 0,
       })),
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Error al obtener documentos";
-    return NextResponse.json({ success: false, error: msg }, { status: msg === "No autenticado" ? 401 : msg === "No autorizado" ? 403 : 500 });
+    return NextResponse.json({ success: false, error: msg }, { status: msg === "No autenticado" ? 401 : 500 });
   }
 }
