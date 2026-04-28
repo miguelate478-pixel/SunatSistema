@@ -14,3 +14,10 @@ healthcheckPath = "/api/ready"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+[deploy]
+startCommand = "sh scripts/start.sh"
+healthcheckPath = "/api/ready"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
