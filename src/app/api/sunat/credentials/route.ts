@@ -126,6 +126,7 @@ export async function GET(req: NextRequest) {
         lastTestedAt: credentials.lastTestedAt,
         lastTestOk: credentials.lastTestOk,
         lastTestMessage: credentials.lastTestMessage,
+        lastSyncAt: credentials.lastSyncAt,
       },
     });
   } catch (error) {

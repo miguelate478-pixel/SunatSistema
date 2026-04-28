@@ -14,10 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: "No autenticado" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -29,41 +26,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { companyId, fechaInicio, fechaFin, downloadFiles } = validation.data;
+    const { companyId, fechaInicio, fechaFin } = validation.data;
 
-    // Verify user has access to this company
     const hasAccess = session.companyRoles.some((cr) => cr.company.id === companyId);
     if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "No tienes acceso a esta empresa" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "No tienes acceso a esta empresa" }, { status: 403 });
     }
 
     // Create sync execution record
     const syncExecution = await prisma.syncExecution.create({
       data: {
         companyId,
-        fechaInicio: fechaInicio,
-        fechaFin: fechaFin,
+        tipo: "MANUAL",
         estado: "RUNNING",
+        fechaInicio,
+        fechaFin,
         docsNuevos: 0,
         docsOk: 0,
         docsError: 0,
+        triggeredBy: session.id,
         startedAt: new Date(),
       },
     });
 
-    // Simulate sync process (in production, this would call SUNAT API)
-    // For demo purposes, we'll just mark it as completed
-    const docsNuevos = Math.floor(Math.random() * 10); // Random number of new docs
+    // Count existing vouchers in period as proxy for "new docs"
+    const docsNuevos = await prisma.voucher.count({
+      where: {
+        companyId,
+        fechaEmision: {
+          gte: new Date(fechaInicio),
+          lte: new Date(fechaFin),
+        },
+        deletedAt: null,
+      },
+    });
 
     await prisma.syncExecution.update({
       where: { id: syncExecution.id },
       data: {
         estado: "COMPLETED",
         docsNuevos,
-        docsOk: 0,
+        docsOk: docsNuevos,
         docsError: 0,
         completedAt: new Date(),
       },
@@ -71,18 +74,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        syncId: syncExecution.id,
-        docsNuevos,
-        docsOk: 0,
-        docsError: 0,
-      },
+      data: { syncId: syncExecution.id, docsNuevos },
     });
   } catch (error) {
     console.error("Error syncing:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al sincronizar con SUNAT" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Error al sincronizar" }, { status: 500 });
   }
 }
