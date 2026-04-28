@@ -42,15 +42,20 @@ const TIPO_CONFIG = {
   "comprobantes":      { icon: Package,   label: "Comprobantes",      color: "text-amber-600 bg-amber-50" },
 };
 
-function getMonths(n = 24) {
-  return Array.from({ length: n }, (_, i) => {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    const label = d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
-    const periodo = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
-    return { label: label.charAt(0).toUpperCase() + label.slice(1), periodo };
-  });
+function getMonths() {
+  const months = [];
+  const now = new Date();
+  const start = new Date(2024, 0, 1); // January 2024
+  
+  // From current month back to January 2024
+  const current = new Date(now.getFullYear(), now.getMonth(), 1);
+  while (current >= start) {
+    const label = current.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
+    const periodo = `${current.getFullYear()}${String(current.getMonth() + 1).padStart(2, "0")}`;
+    months.push({ label: label.charAt(0).toUpperCase() + label.slice(1), periodo });
+    current.setMonth(current.getMonth() - 1);
+  }
+  return months;
 }
 
 export default function DescargasPage() {
@@ -62,7 +67,7 @@ export default function DescargasPage() {
   const [creating, setCreating] = useState<string | null>(null);
   const [credStatus, setCredStatus] = useState<SunatCredStatus | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
-  const months = getMonths(24);
+  const months = getMonths();
 
   const loadJobs = useCallback(async () => {
     if (!companyId) return;
