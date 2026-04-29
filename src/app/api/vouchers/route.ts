@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
 
     await requireCompanyAccess(companyId);
 
-    const direccion = searchParams.get("tipo"); // "COMPRA" | "VENTA" | null
+    // "tipo" param can be "COMPRA"/"VENTA" (direction) or "FACTURA"/"BOLETA" (doc type)
     const tipoParam = searchParams.get("tipo");
     const isDirectionFilter = tipoParam === "COMPRA" || tipoParam === "VENTA";
-    const tipoDocParam = searchParams.get("tipoDoc"); // FACTURA, BOLETA, etc.
+    const tipoDocParam = searchParams.get("tipoDoc");
 
     const query = voucherQuerySchema.parse({
       companyId,
@@ -31,16 +31,11 @@ export async function GET(request: NextRequest) {
       limit: parseInt(searchParams.get("limit") || "100"),
     });
 
-    let rucFilter: { rucReceptor?: string; rucEmisor?: string } = {};
-    if (direccion === "COMPRA" || direccion === "VENTA") {
-      const company = await prisma.company.findUnique({ where: { id: companyId } });
-      if (company) {
-        if (direccion === "COMPRA") rucFilter = { rucReceptor: company.ruc };
-        if (direccion === "VENTA") rucFilter = { rucEmisor: company.ruc };
-      }
-    }
+    // Filter by direccion field (set when vouchers are downloaded from SIRE)
+    // This is more reliable than filtering by RUC since SIRE data may have incomplete receptor RUCs
+    const direccionFilter: string | undefined = isDirectionFilter ? tipoParam! : undefined;
 
-    const result = await voucherService.getVouchers(query, rucFilter);
+    const result = await voucherService.getVouchers(query, undefined, direccionFilter);
 
     return NextResponse.json({
       success: true,

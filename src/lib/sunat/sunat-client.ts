@@ -41,10 +41,7 @@ export interface TicketStatusResponse {
     nomArchivoReporte: string;
     codTipoAchivoReporte: string | null;
   }>;
-  errores?: Array<{
-    codError: string;
-    desError: string;
-  }>;
+  errores?: Array<{ codError: string; desError: string }>;
 }
 
 export class SunatClient {
@@ -55,12 +52,7 @@ export class SunatClient {
   private claveSol: string;
   private accessToken: string | null = null;
   private tokenExpiry: Date | null = null;
-  private tokenGt: string | undefined = undefined;
   private axiosInstance: AxiosInstance;
-
-  private get BASE() {
-    return SIRE_API_BASE;
-  }
 
   constructor(
     clientId: string,
@@ -78,19 +70,15 @@ export class SunatClient {
     this.axiosInstance = axios.create();
   }
 
-  private authHeaders(token: string, _gt?: string) {
-    const headers: Record<string, string> = {
+  private authHeaders(token: string) {
+    return {
       Authorization: `Bearer ${token}`,
       Accept: "application/json, text/plain, */*",
       "Accept-Language": "es-419,es;q=0.9",
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       "Origin": "https://e-factura.sunat.gob.pe",
       "Referer": "https://e-factura.sunat.gob.pe/",
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-site",
     };
-    return headers;
   }
 
   private async ensureValidToken(): Promise<string> {
@@ -107,7 +95,6 @@ export class SunatClient {
     } catch (error: unknown) {
       const err = error as { response?: { status?: number } };
       if (err?.response?.status === 401) {
-        console.warn("[SIRE] 401 recibido — refrescando token y reintentando...");
         this.accessToken = null;
         this.tokenExpiry = null;
         const freshToken = await this.getOAuth2Token();
@@ -128,185 +115,169 @@ export class SunatClient {
       params.append("password", this.claveSol);
 
       const url = `${SUNAT_SECURITY_BASE}/${this.clientId}/oauth2/token/`;
-      console.log(`[SIRE] Auth POST ${url}`);
-      console.log(`[SIRE] username=${this.ruc}${this.usuario} | clientId=${this.clientId}`);
+      console.log(`[SIRE] Auth POST ${url} | user=${this.ruc}${this.usuario}`);
 
       const response = await this.axiosInstance.post<TokenResponse>(url, params, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        timeout: 15000,
       });
 
       this.accessToken = response.data.access_token;
       this.tokenExpiry = new Date(Date.now() + response.data.expires_in * 1000);
       console.log(`[SIRE] Token OK, expira en ${response.data.expires_in}s`);
-      
-      try {
-        const payload = JSON.parse(Buffer.from(this.accessToken.split(".")[1], "base64").toString());
-        let aud = payload.aud;
-        if (typeof aud === "string") aud = JSON.parse(aud);
-        const audArr = Array.isArray(aud) ? aud : [aud];
-        const sireAud = audArr.find((a: any) => a?.api?.includes("api-sire")) ?? audArr[0];
-        const recurso = sireAud?.recurso?.[0];
-        this.tokenGt = recurso?.gt;
-        console.log(`[SIRE] Token sub:`, payload.sub, `| gt:`, this.tokenGt);
-      } catch (e) {
-        console.log(`[SIRE] Error parseando token:`, e);
-      }
-      
       return this.accessToken;
     } catch (error: any) {
-      if (error?.response) {
-        const status = error.response.status;
-        const data = error.response.data;
-        const body = Buffer.isBuffer(data) ? data.toString("utf8") : JSON.stringify(data);
-        console.error(`[SIRE] Auth error HTTP ${status}:`, body);
-        throw new Error(`SUNAT auth failed: HTTP ${status} - ${body}`);
-      } else if (error?.request) {
-        console.error("[SIRE] Auth error de red:", error.message);
-        throw new Error(`SUNAT auth failed: sin respuesta del servidor - ${error.message}`);
-      } else {
-        console.error("[SIRE] Auth error desconocido:", error.message);
-        throw new Error(`SUNAT auth failed: ${error.message}`);
-      }
+      const status = error?.response?.status;
+      const body = error?.response?.data
+        ? (Buffer.isBuffer(error.response.data) ? error.response.data.toString("utf8") : JSON.stringify(error.response.data))
+        : error.message;
+      throw new Error(`SUNAT auth failed: HTTP ${status ?? "sin respuesta"} - ${String(body).slice(0, 300)}`);
     }
   }
 
+  /**
+   * Solicita descarga de comprobantes SIRE.
+   *
+   * Flujo real de SIRE:
+   * - Compras: solicita ticket con endpoint exportacioncomprobantepropuesta (codProceso=10)
+   *   → el archivo resultante es la "propuesta" (puede estar vacía si no hay compras)
+   * - Ventas: solicita ticket con endpoint exportapropuesta (codProceso=10)
+   *   → igual, propuesta de ventas
+   *
+   * Los archivos con datos reales (codProceso=5, "Generación de Registros") se descargan
+   * directamente por nombre sin necesidad de ticket.
+   */
   async requestDownloadTicket(tipo: string, periodoTributario: string): Promise<string> {
     validatePeriodo(periodoTributario);
     return this.withAutoRefresh(async (token) => {
-      try {
-        if (tipo === "propuesta-ventas") {
-          const urlVentas = `${this.BASE}/rvie/propuesta/web/propuesta/${periodoTributario}/exportapropuesta`;
-          try {
-            console.log(`[SIRE] Ventas exportapropuesta GET ${urlVentas}`);
-            const r = await this.axiosInstance.get(urlVentas, {
-              params: {
-                codOrigenEnvio: 2,
-                codTipoArchivo: 0,
-                mtoTotalDesde: "",
-                mtoTotalHasta: "",
-                fecDocumentoDesde: "",
-                fecDocumentoHasta: "",
-                numRucAdquiriente: "",
-                numCarSunat: "",
-                codTipoCDP: "",
-                codTipoInconsistencia: "",
-              },
-              headers: this.authHeaders(token, this.tokenGt),
-            });
-            console.log(`[SIRE] Ventas exportapropuesta OK:`, JSON.stringify(r.data));
-            const nt = r.data?.numTicket ?? r.data?.data?.numTicket;
-            if (nt) return String(nt);
-          } catch (e: any) {
-            console.log(`[SIRE] Ventas exportapropuesta HTTP ${e?.response?.status}`);
-          }
+      const headers = this.authHeaders(token);
 
-          try {
-            console.log(`[SIRE] Ventas arraybuffer GET ${urlVentas}`);
-            const r = await this.axiosInstance.get(urlVentas, {
-              params: { codOrigenEnvio: 2, codTipoArchivo: 0 },
-              headers: this.authHeaders(token, this.tokenGt),
-              responseType: "arraybuffer",
-            });
-            console.log(`[SIRE] Ventas arraybuffer OK, size=${r.data?.byteLength}`);
-            const directKey = `DIRECT_${periodoTributario}_${Date.now()}`;
-            directDownloadBuffers.set(directKey, Buffer.from(r.data));
-            return directKey;
-          } catch (e: any) {
-            console.log(`[SIRE] Ventas arraybuffer HTTP ${e?.response?.status}`);
-          }
+      // ── VENTAS ──────────────────────────────────────────────────────────────
+      if (tipo === "propuesta-ventas") {
+        // Primero intentar descarga directa del archivo de registros reales
+        const directKey = await this.tryDirectDownloadVentas(token, periodoTributario);
+        if (directKey) return directKey;
 
-          throw new Error(`No se pudo obtener datos de ventas para ${periodoTributario}.`);
-        }
-
-        if (tipo === "propuesta-compras" || tipo === "propuesta" || tipo === "comprobantes") {
-          const url534 = `${this.BASE}/rce/propuesta/web/propuesta/${periodoTributario}/exportacioncomprobantepropuesta`;
-          try {
-            console.log(`[SIRE] 5.34 GET ${url534}`);
-            const r = await this.axiosInstance.get(url534, {
-              params: { codTipoArchivo: 0, codOrigenEnvio: 2 },
-              headers: this.authHeaders(token, this.tokenGt),
-            });
-            console.log(`[SIRE] 5.34 OK:`, JSON.stringify(r.data));
-            const nt = r.data?.numTicket ?? r.data?.data?.numTicket;
-            if (nt) return String(nt);
-          } catch (e: any) {
-            console.log(`[SIRE] 5.34 HTTP ${e?.response?.status}`);
-          }
-
-          const urlPortal = `${this.BASE}/rvierce/resumen/web/resumencomprobantes/${periodoTributario}/1/0/exporta`;
-          try {
-            console.log(`[SIRE] Portal exporta GET ${urlPortal}`);
-            const r = await this.axiosInstance.get(urlPortal, {
-              params: { codLibro: "080000" },
-              headers: this.authHeaders(token, this.tokenGt),
-              responseType: "arraybuffer",
-            });
-            console.log(`[SIRE] Portal exporta OK, size=${r.data?.byteLength}`);
-            const directKey = `DIRECT_${periodoTributario}_${Date.now()}`;
-            directDownloadBuffers.set(directKey, Buffer.from(r.data));
-            return directKey;
-          } catch (e: any) {
-            console.log(`[SIRE] Portal exporta HTTP ${e?.response?.status}`);
-          }
-
-          const url553 = `${this.BASE}/rvierce/gestionlibro/web/comprobanteslibros/${periodoTributario}/reportecar`;
-          for (const codFase of ["1", "2", "3"]) {
-            try {
-              console.log(`[SIRE] 5.53 codFase=${codFase} GET ${url553}`);
-              const r3 = await this.axiosInstance.get(url553, {
-                params: { codOrigenEnvio: "2", codLibro: "080000", codFase },
-                headers: this.authHeaders(token, this.tokenGt),
-              });
-              console.log(`[SIRE] 5.53 OK:`, JSON.stringify(r3.data));
-              const nt3 = r3.data?.numTicket ?? r3.data?.data?.numTicket;
-              if (nt3) return String(nt3);
-            } catch (e: any) {
-              console.log(`[SIRE] 5.53 codFase=${codFase} HTTP ${e?.response?.status}`);
-            }
-          }
-          throw new Error(`Todos los endpoints fallaron para periodo ${periodoTributario}`);
-        } else if (tipo === "resumen") {
-          const urlResumen = `${this.BASE}/rvierce/resumen/web/resumencomprobantes/${periodoTributario}/1/0/exporta`;
-          try {
-            console.log(`[SIRE] Resumen exporta GET ${urlResumen}`);
-            const r = await this.axiosInstance.get(urlResumen, {
-              params: { codLibro: "080000" },
-              headers: this.authHeaders(token, this.tokenGt),
-              responseType: "arraybuffer",
-            });
-            console.log(`[SIRE] Resumen exporta OK, size=${r.data?.byteLength}`);
-            const directKey = `DIRECT_${periodoTributario}_${Date.now()}`;
-            directDownloadBuffers.set(directKey, Buffer.from(r.data));
-            return directKey;
-          } catch (e: any) {
-            console.log(`[SIRE] Resumen exporta HTTP ${e?.response?.status}`);
-          }
-
-          const url535 = `${this.BASE}/rvierce/resumen/web/resumencomprobantes/${periodoTributario}/exportacionresumen`;
-          const r2 = await this.axiosInstance.get(url535, {
-            params: { codOrigenEnvio: 2 },
-            headers: this.authHeaders(token, this.tokenGt),
+        // Fallback: solicitar ticket de propuesta
+        const urlVentas = `${SIRE_API_BASE}/rvie/propuesta/web/propuesta/${periodoTributario}/exportapropuesta`;
+        try {
+          const r = await this.axiosInstance.get(urlVentas, {
+            params: { codOrigenEnvio: 2, codTipoArchivo: 0 },
+            headers,
+            timeout: 30000,
           });
-          const nt2 = r2.data?.numTicket ?? r2.data?.data?.numTicket;
-          if (!nt2) throw new Error(`Sin numTicket resumen: ${JSON.stringify(r2.data)}`);
-          return String(nt2);
-        } else {
-          throw new Error(`Tipo no soportado: ${tipo}`);
+          const nt = r.data?.numTicket ?? r.data?.data?.numTicket;
+          if (nt) { console.log(`[SIRE] Ventas ticket: ${nt}`); return String(nt); }
+        } catch (e: any) {
+          console.log(`[SIRE] Ventas ticket HTTP ${e?.response?.status}`);
         }
-      } catch (error: any) {
-        if (!error?.response && !error?.request) throw error;
-        if (error?.response) {
-          const status = error.response.status;
-          const data = error.response.data;
-          const body = Buffer.isBuffer(data) ? data.toString("utf8") : JSON.stringify(data);
-          console.error(`[SIRE] Error HTTP ${status} en requestDownloadTicket:`, body);
-          throw new Error(`Failed to request ${tipo} ticket: HTTP ${status} - ${body}`);
-        } else {
-          console.error("[SIRE] Error de red en requestDownloadTicket:", error.message);
-          throw new Error(`Failed to request ${tipo} ticket: sin respuesta - ${error.message}`);
+
+        // Último recurso: arraybuffer directo
+        try {
+          const r = await this.axiosInstance.get(
+            `${SIRE_API_BASE}/rvie/propuesta/web/propuesta/${periodoTributario}/exportapropuesta`,
+            { params: { codOrigenEnvio: 2, codTipoArchivo: 0 }, headers, responseType: "arraybuffer", timeout: 30000 }
+          );
+          const key = `DIRECT_${periodoTributario}_${Date.now()}`;
+          directDownloadBuffers.set(key, Buffer.from(r.data));
+          return key;
+        } catch (e: any) {
+          console.log(`[SIRE] Ventas arraybuffer HTTP ${e?.response?.status}`);
         }
+
+        throw new Error(`No se pudo obtener datos de ventas para ${periodoTributario}`);
       }
+
+      // ── COMPRAS ─────────────────────────────────────────────────────────────
+      if (tipo === "propuesta-compras" || tipo === "propuesta" || tipo === "comprobantes") {
+        // Primero intentar descarga directa del archivo de registros reales
+        const directKey = await this.tryDirectDownloadCompras(token, periodoTributario);
+        if (directKey) return directKey;
+
+        // Fallback: solicitar ticket de propuesta
+        const url534 = `${SIRE_API_BASE}/rce/propuesta/web/propuesta/${periodoTributario}/exportacioncomprobantepropuesta`;
+        try {
+          const r = await this.axiosInstance.get(url534, {
+            params: { codTipoArchivo: 0, codOrigenEnvio: 2 },
+            headers,
+            timeout: 30000,
+          });
+          const nt = r.data?.numTicket ?? r.data?.data?.numTicket;
+          if (nt) { console.log(`[SIRE] Compras ticket: ${nt}`); return String(nt); }
+        } catch (e: any) {
+          console.log(`[SIRE] Compras ticket HTTP ${e?.response?.status}`);
+        }
+
+        throw new Error(`No se pudo obtener datos de compras para ${periodoTributario}`);
+      }
+
+      throw new Error(`Tipo no soportado: ${tipo}`);
     });
+  }
+
+  /**
+   * Intenta descargar directamente el archivo de registros reales de VENTAS.
+   * El nombre del archivo sigue el patrón: LE{RUC}{PERIODO}00140400011112.zip
+   * Este es el archivo "inconsistencias" que contiene los comprobantes reales.
+   */
+  private async tryDirectDownloadVentas(token: string, periodo: string): Promise<string | null> {
+    const ruc = this.ruc;
+    const nomArchivo = `LE${ruc}${periodo}00140400011112.zip`;
+    console.log(`[SIRE] Intentando descarga directa ventas: ${nomArchivo}`);
+
+    try {
+      const r = await this.axiosInstance.get(
+        `${SIRE_API_BASE}/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`,
+        {
+          params: { nomArchivoReporte: nomArchivo, codLibro: "140000" },
+          headers: this.authHeaders(token),
+          responseType: "arraybuffer",
+          timeout: 30000,
+        }
+      );
+      const buf = Buffer.from(r.data);
+      if (buf.length > 100) {
+        const key = `DIRECT_VENTAS_${periodo}_${Date.now()}`;
+        directDownloadBuffers.set(key, buf);
+        console.log(`[SIRE] Descarga directa ventas OK: ${buf.length} bytes`);
+        return key;
+      }
+    } catch (e: any) {
+      console.log(`[SIRE] Descarga directa ventas HTTP ${e?.response?.status} (normal si no hay datos)`);
+    }
+    return null;
+  }
+
+  /**
+   * Intenta descargar directamente el archivo de registros reales de COMPRAS.
+   * El nombre del archivo sigue el patrón: LE{RUC}{PERIODO}00080400011112.zip
+   */
+  private async tryDirectDownloadCompras(token: string, periodo: string): Promise<string | null> {
+    const ruc = this.ruc;
+    const nomArchivo = `LE${ruc}${periodo}00080400011112.zip`;
+    console.log(`[SIRE] Intentando descarga directa compras: ${nomArchivo}`);
+
+    try {
+      const r = await this.axiosInstance.get(
+        `${SIRE_API_BASE}/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`,
+        {
+          params: { nomArchivoReporte: nomArchivo, codLibro: "080000" },
+          headers: this.authHeaders(token),
+          responseType: "arraybuffer",
+          timeout: 30000,
+        }
+      );
+      const buf = Buffer.from(r.data);
+      if (buf.length > 100) {
+        const key = `DIRECT_COMPRAS_${periodo}_${Date.now()}`;
+        directDownloadBuffers.set(key, buf);
+        console.log(`[SIRE] Descarga directa compras OK: ${buf.length} bytes`);
+        return key;
+      }
+    } catch (e: any) {
+      console.log(`[SIRE] Descarga directa compras HTTP ${e?.response?.status} (normal si no hay datos)`);
+    }
+    return null;
   }
 
   async checkTicketStatus(numTicket: string, periodoTributario?: string, codLibro = "080000"): Promise<TicketStatusResponse> {
@@ -314,24 +285,17 @@ export class SunatClient {
 
     return this.withAutoRefresh(async (token) => {
       try {
-        const url = `${this.BASE}/rvierce/gestionprocesosmasivos/web/masivo/consultaestadotickets`;
-        const params = {
-          perIni: periodo,
-          perFin: periodo,
-          page: 1,
-          perPage: 20,
-          numTicket,
-          codLibro,
-          codOrigenEnvio: "2",
-        };
+        const url = `${SIRE_API_BASE}/rvierce/gestionprocesosmasivos/web/masivo/consultaestadotickets`;
+        const params = { perIni: periodo, perFin: periodo, page: 1, perPage: 20, numTicket, codLibro, codOrigenEnvio: "2" };
 
-        console.log(`[SIRE] 5.31 GET ${url}`, params);
+        console.log(`[SIRE] checkTicketStatus ${numTicket} periodo=${periodo}`);
         const response = await this.axiosInstance.get(url, {
           params,
-          headers: this.authHeaders(token, this.tokenGt),
+          headers: this.authHeaders(token),
+          timeout: 15000,
         });
 
-        console.log(`[SIRE] 5.31 respuesta:`, JSON.stringify(response.data));
+        console.log(`[SIRE] ticket status:`, JSON.stringify(response.data).slice(0, 500));
 
         const registros: any[] = response.data?.registros ?? response.data ?? [];
         const item = Array.isArray(registros) ? registros[0] : registros;
@@ -348,14 +312,7 @@ export class SunatClient {
 
         const archivoReporte: any[] = item.archivoReporte ?? item.detalleTicket?.archivoReporte ?? [];
         const primerArchivo = archivoReporte[0];
-
-        let nomArchivoReporte = primerArchivo?.nomArchivoReporte ?? item.detalleTicket?.nomArchivoReporte;
-        if (!nomArchivoReporte && estado === "Terminado") {
-          nomArchivoReporte = `${this.ruc}_RCE_${periodo}_${numTicket}.zip`;
-          console.log(`[SIRE] nomArchivoReporte construido: ${nomArchivoReporte}`);
-        }
-
-        const errores = item.errores ?? item.detalleTicket?.errores ?? [];
+        const nomArchivoReporte = primerArchivo?.nomArchivoReporte ?? item.detalleTicket?.nomArchivoReporte;
 
         return {
           numTicket: item.numTicket ?? numTicket,
@@ -364,24 +321,17 @@ export class SunatClient {
           codEstadoProceso,
           nomArchivoReporte,
           codProceso: item.codProceso,
-          codLibro: item.codLibro ?? "080000",
+          codLibro: item.codLibro ?? codLibro,
           perTributario: item.perTributario ?? periodo,
           archivoReporte,
-          errores,
+          errores: item.errores ?? item.detalleTicket?.errores ?? [],
         };
       } catch (error: any) {
-        if (error?.response) {
-          const status = error.response.status;
-          const data = error.response.data;
-          const body = Buffer.isBuffer(data) ? data.toString("utf8") : JSON.stringify(data);
-          console.error(`[SIRE] Error 5.31 HTTP ${status}:`, body);
-          throw new Error(`Failed to check ticket status: HTTP ${status} - ${body}`);
-        } else if (error?.request) {
-          console.error("[SIRE] Error 5.31 de red:", error.message);
-          throw new Error(`Failed to check ticket status: sin respuesta - ${error.message}`);
-        } else {
-          throw error;
-        }
+        const status = error?.response?.status;
+        const body = error?.response?.data
+          ? (Buffer.isBuffer(error.response.data) ? error.response.data.toString("utf8") : JSON.stringify(error.response.data))
+          : error.message;
+        throw new Error(`Failed to check ticket status: HTTP ${status ?? "sin respuesta"} - ${String(body).slice(0, 200)}`);
       }
     });
   }
@@ -407,7 +357,7 @@ export class SunatClient {
 
     return this.withAutoRefresh(async (token) => {
       try {
-        const url = `${this.BASE}/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`;
+        const url = `${SIRE_API_BASE}/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`;
         const params: Record<string, string> = {
           nomArchivoReporte,
           codLibro: extra?.codLibro ?? "080000",
@@ -417,87 +367,47 @@ export class SunatClient {
         if (extra?.codProceso) params.codProceso = extra.codProceso;
         if (extra?.numTicket) params.numTicket = extra.numTicket;
 
-        console.log(`[SIRE] 5.32 GET ${url}`, params);
+        console.log(`[SIRE] downloadFile ${nomArchivoReporte}`);
         const response = await this.axiosInstance.get(url, {
           params,
-          headers: this.authHeaders(token, this.tokenGt),
+          headers: this.authHeaders(token),
           responseType: "arraybuffer",
+          timeout: 60000,
         });
 
         const data = response.data;
-        if (Buffer.isBuffer(data)) {
-          const str = data.toString("utf8");
-          if (/^[A-Za-z0-9+/=]+$/.test(str.trim())) {
-            try {
-              return Buffer.from(str, "base64");
-            } catch {
-              return data;
-            }
-          }
-          return data;
-        }
-        if (typeof data === "object" && data?.archivo) {
-          return Buffer.from(data.archivo, "base64");
-        }
-        if (typeof data === "string") {
-          return Buffer.from(data, "base64");
-        }
+        if (Buffer.isBuffer(data)) return data;
+        if (typeof data === "object" && data?.archivo) return Buffer.from(data.archivo, "base64");
+        if (typeof data === "string") return Buffer.from(data, "base64");
         return Buffer.from(data);
       } catch (error: any) {
-        if (error?.response) {
-          const status = error.response.status;
-          const data = error.response.data;
-          const body = Buffer.isBuffer(data) ? data.toString("utf8") : JSON.stringify(data);
-          console.error(`[SIRE] Error 5.32 HTTP ${status}:`, body);
-          throw new Error(`Failed to download file from SUNAT: HTTP ${status} - ${body}`);
-        } else if (error?.request) {
-          console.error("[SIRE] Error 5.32 de red:", error.message);
-          throw new Error(`Failed to download file from SUNAT: sin respuesta - ${error.message}`);
-        } else {
-          console.error("[SIRE] Error 5.32 desconocido:", error.message);
-          throw new Error(`Failed to download file from SUNAT: ${error.message}`);
-        }
+        const status = error?.response?.status;
+        const body = error?.response?.data
+          ? (Buffer.isBuffer(error.response.data) ? error.response.data.toString("utf8") : JSON.stringify(error.response.data))
+          : error.message;
+        throw new Error(`Failed to download file: HTTP ${status ?? "sin respuesta"} - ${String(body).slice(0, 200)}`);
       }
     });
   }
 
   async getPeriodos(codLibro = "080000"): Promise<any[]> {
     return this.withAutoRefresh(async (token) => {
-      const url = `${this.BASE}/rvierce/padron/web/omisos/${codLibro}/periodos`;
-      console.log(`[SIRE] 5.33 GET ${url}`);
+      const url = `${SIRE_API_BASE}/rvierce/padron/web/omisos/${codLibro}/periodos`;
       try {
         const response = await this.axiosInstance.get(url, {
-          headers: this.authHeaders(token, this.tokenGt),
+          headers: this.authHeaders(token),
+          timeout: 15000,
         });
         const data = response.data;
-        console.log(`[SIRE] 5.33 respuesta:`, JSON.stringify(data));
-
-        if (data?.codRespuesta === "1070") {
-          console.log(`[SIRE] 5.33 sin periodos disponibles (1070): ${data.msgRespuesta}`);
-          return [];
-        }
-
-        const periodos: any[] = data?.listaPeriodos ?? data?.periodos ?? (Array.isArray(data) ? data.flatMap((e: any) => e.lisPeriodos ?? []) : []);
-        console.log(`[SIRE] 5.33 total periodos obtenidos: ${periodos.length}`);
-        return periodos;
+        if (data?.codRespuesta === "1070") return [];
+        return data?.listaPeriodos ?? data?.periodos ?? (Array.isArray(data) ? data.flatMap((e: any) => e.lisPeriodos ?? []) : []);
       } catch (error: any) {
-        if (error?.response) {
-          const status = error.response.status;
-          const data = error.response.data;
-          const body = Buffer.isBuffer(data) ? data.toString("utf8") : JSON.stringify(data);
-          if (status === 422) {
-            const parsed = typeof data === "object" ? data : {};
-            if (parsed?.codRespuesta === "1070") return [];
-            throw new Error(`SUNAT validación (422): ${parsed?.msgRespuesta ?? body}`);
-          }
-          console.error(`[SIRE] Error 5.33 HTTP ${status}:`, body);
-          throw new Error(`Failed to get periodos: HTTP ${status} - ${body}`);
-        } else if (error?.request) {
-          console.error("[SIRE] Error 5.33 de red:", error.message);
-          throw new Error(`Failed to get periodos: sin respuesta - ${error.message}`);
-        } else {
-          throw error;
+        const status = error?.response?.status;
+        if (status === 422) {
+          const parsed = error.response.data;
+          if (parsed?.codRespuesta === "1070") return [];
         }
+        throw new Error(`Failed to get periodos: HTTP ${status ?? "sin respuesta"}`);
       }
     });
   }

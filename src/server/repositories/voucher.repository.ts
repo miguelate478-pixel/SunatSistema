@@ -16,7 +16,7 @@ export class VoucherRepository {
     });
   }
 
-  async findMany(query: VoucherQueryInput, rucFilter?: { rucReceptor?: string; rucEmisor?: string }) {
+  async findMany(query: VoucherQueryInput, rucFilter?: { rucReceptor?: string; rucEmisor?: string }, direccion?: string) {
     const { companyId, tipo, estado, fechaInicio, fechaFin, search, page, limit } = query;
 
     const where: Prisma.VoucherWhereInput = {
@@ -24,8 +24,11 @@ export class VoucherRepository {
       deletedAt: null,
       ...(tipo && { tipo }),
       ...(estado && { estado }),
-      ...(rucFilter?.rucReceptor && { rucReceptor: rucFilter.rucReceptor }),
-      ...(rucFilter?.rucEmisor && { rucEmisor: rucFilter.rucEmisor }),
+      // Filter by direccion field (COMPRA/VENTA) — primary filter for SIRE-downloaded vouchers
+      ...(direccion && { direccion }),
+      // Fallback RUC filters for manually created vouchers
+      ...(!direccion && rucFilter?.rucReceptor && { rucReceptor: rucFilter.rucReceptor }),
+      ...(!direccion && rucFilter?.rucEmisor && { rucEmisor: rucFilter.rucEmisor }),
       ...(fechaInicio && fechaFin && {
         fechaEmision: {
           gte: new Date(fechaInicio),

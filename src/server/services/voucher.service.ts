@@ -3,8 +3,8 @@ import prisma from "@/lib/db/prisma";
 import type { CreateVoucherInput, VoucherQueryInput } from "@/lib/validators/voucher";
 
 export class VoucherService {
-  async getVouchers(query: VoucherQueryInput, rucFilter?: { rucReceptor?: string; rucEmisor?: string }) {
-    return voucherRepository.findMany(query, rucFilter);
+  async getVouchers(query: VoucherQueryInput, rucFilter?: { rucReceptor?: string; rucEmisor?: string }, direccion?: string) {
+    return voucherRepository.findMany(query, rucFilter, direccion);
   }
 
   async getVoucherById(id: string) {

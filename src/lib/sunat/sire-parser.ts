@@ -110,11 +110,26 @@ export async function parseSireFromZipBuffer(
         const lines = content.split("\n").filter(l => l.trim() && l.includes("|"));
         console.log(`[SIRE Parser] TXT ${name}: ${lines.length} líneas con pipes`);
 
+        // Detect format from first data line
+        const firstDataLine = lines.find(l => {
+          const f = l.split("|");
+          return f[0] && /^\d{11}$/.test(f[0].trim()); // RUC as first field = RVIE inconsistencias
+        });
+        const isRVIEFormat = firstDataLine !== undefined && lines[0]?.split("|")[0]?.trim() === "RUC";
+
         for (const line of lines) {
           const fields = line.split("|");
-          const parsed = tipo === "propuesta-ventas"
-            ? parseRVIELine(fields)
-            : parseRCELine(fields);
+          let parsed: SireComprobanteData | null = null;
+
+          if (isRVIEFormat) {
+            // RVIE inconsistencias format: [0]=RUC emisor, [1]=razon, [2]=periodo, [3]=CUO, [4]=fecha, [6]=tipo, [7]=serie, [8]=numero
+            parsed = parseRVIEInconsistenciasLine(fields, tipo);
+          } else if (tipo === "propuesta-ventas") {
+            parsed = parseRVIELine(fields);
+          } else {
+            parsed = parseRCELine(fields);
+          }
+
           if (parsed) comprobantes.push(parsed);
         }
       }
@@ -126,26 +141,16 @@ export async function parseSireFromZipBuffer(
           const XLSX = require("xlsx");
           const wb = XLSX.read(entry.getData(), { type: "buffer" });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          // header: 1 returns arrays; we need to detect header row
           const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
           console.log(`[SIRE Parser] Excel ${name}: ${allRows.length} filas totales`);
 
-          // Find first data row — skip rows that look like headers
-          // A header row has text like "Período", "Fecha", "Tipo", etc.
           let startRow = 0;
           for (let i = 0; i < Math.min(5, allRows.length); i++) {
             const row = allRows[i];
             const firstCell = String(row[0] ?? "").trim();
-            // If first cell is a 6-digit number (YYYYMM) it's a data row
-            if (/^\d{6}$/.test(firstCell)) {
-              startRow = i;
-              break;
-            }
-            // Otherwise skip (it's a header/title row)
+            if (/^\d{6}$/.test(firstCell)) { startRow = i; break; }
             startRow = i + 1;
           }
-
-          console.log(`[SIRE Parser] Excel: starting data at row ${startRow}`);
 
           for (const row of allRows.slice(startRow)) {
             const parsed = tipo === "propuesta-ventas"
@@ -165,6 +170,65 @@ export async function parseSireFromZipBuffer(
 
   console.log(`[SIRE Parser] Total comprobantes parseados: ${comprobantes.length}`);
   return comprobantes;
+}
+
+// ── RVIE Inconsistencias (formato real con datos) ─────────────────────────────
+// Formato: [0]=RUC emisor, [1]=Razón social, [2]=Período, [3]=CUO,
+//          [4]=Fecha emisión, [5]=Fecha vcto, [6]=Tipo CP, [7]=Serie, [8]=Número,
+//          [9]=Tipo doc receptor, [10]=RUC/DNI receptor, [11]=Razón social receptor
+//          [12..] = montos varios
+function parseRVIEInconsistenciasLine(fields: string[], _tipo: string): SireComprobanteData | null {
+  try {
+    const f = fields.map(s => s.trim().replace(/\r/g, ""));
+    if (f.length < 10) return null;
+
+    // Skip header row
+    if (f[0] === "RUC" || f[0] === "Periodo" || f[0] === "ID") return null;
+    // RUC emisor must be 11 digits
+    if (!f[0] || f[0].length !== 11 || isNaN(Number(f[0]))) return null;
+
+    const rucEmisor = f[0];
+    const razonSocialEmisor = f[1] || "";
+    const periodo = f[2];
+    const fechaEmision = f[4];
+    const tipoComp = f[6] || "01";
+    const serie = f[7];
+    const numero = f[8];
+    const rucReceptor = f[10] || "";
+    const razonSocialReceptor = f[11] || "";
+
+    if (!serie || !numero) return null;
+    if (!periodo || !/^\d{6}$/.test(periodo)) return null;
+
+    // Find montos in remaining fields
+    let baseImponible = "0", igv = "0", total = "0", moneda = "PEN";
+    const numericFields: number[] = [];
+    for (let i = 12; i < f.length; i++) {
+      const n = parseFloat(f[i]);
+      if (!isNaN(n) && n > 0) numericFields.push(n);
+      if (f[i] === "PEN" || f[i] === "USD") moneda = f[i];
+    }
+    if (numericFields.length >= 1) baseImponible = numericFields[0].toFixed(2);
+    if (numericFields.length >= 2) igv = numericFields[1].toFixed(2);
+    if (numericFields.length >= 3) total = numericFields[2].toFixed(2);
+    else total = (parseFloat(baseImponible) + parseFloat(igv)).toFixed(2);
+
+    return {
+      periodo,
+      fechaEmision: formatDate(fechaEmision),
+      tipoComprobante: tipoComp,
+      serie,
+      numero,
+      rucEmisor,
+      razonSocial: razonSocialEmisor,
+      baseImponible,
+      igv,
+      importeTotal: total,
+      moneda,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── RCE (Compras) TXT ──────────────────────────────────────────────────────────
